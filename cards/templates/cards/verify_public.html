@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+
+{% block title %}Card Verification - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Student Card Verification</h1>
+        <p class="lead">Scanned from a TUT digital student card</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            <div class="card mb-4">
+                <div class="card-header {% if card.is_valid %}bg-success{% else %}bg-danger{% endif %} text-white">
+                    <h5 class="mb-0">
+                        {% if card.is_valid %}
+                            <i class="fas fa-check-circle"></i> Card Valid
+                        {% else %}
+                            <i class="fas fa-times-circle"></i> Card {{ card.status|upper }}
+                        {% endif %}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-3">
+                        {% if user.profile_picture %}
+                            <img src="{{ user.profile_picture.url }}" alt="Student photo" class="rounded-circle" style="width: 96px; height: 96px; object-fit: cover;">
+                        {% else %}
+                            <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center" style="width: 96px; height: 96px;">
+                                <i class="fas fa-user text-muted" style="font-size: 2.25rem;"></i>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Card Number</small>
+                            <p class="h6 mb-0">{{ card.card_number }}</p>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Student Number</small>
+                            <p class="h6 mb-0">{{ user.student_number }}</p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <small class="text-muted">Full Name</small>
+                            <p class="h6 mb-0">{{ user.get_full_name_display }}</p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6">
+                            <small class="text-muted">Issued</small>
+                            <p class="h6 mb-0">{{ card.issue_date|date:"Y-m-d" }}</p>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Expires</small>
+                            <p class="h6 mb-0">{{ card.expiry_date|date:"Y-m-d" }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

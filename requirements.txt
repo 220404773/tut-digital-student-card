@@ -1,0 +1,14 @@
+Django==4.2.0
+Pillow==10.0.0
+qrcode==7.4.2
+pytesseract==0.3.10
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+django-crispy-forms==2.1
+crispy-bootstrap5>=2024.1
+python-decouple==3.8
+PyMuPDF==1.24.10
+langchain-nvidia-ai-endpoints>=0.3.10
+psycopg2-binary==2.9.7
+gunicorn==21.2.0
+whitenoise==6.5.0

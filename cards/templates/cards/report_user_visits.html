@@ -1,0 +1,48 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ visitor.get_full_name_display }} - Visit History - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>{{ visitor.get_full_name_display }}</h1>
+        <p class="lead">Website visit history - {{ visits|length }} visit{{ visits|length|pluralize }}</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Path</th>
+                    <th>IP Address</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for visit in visits %}
+                    <tr>
+                        <td>{{ visit.path }}</td>
+                        <td>{{ visit.ip_address|default:"-" }}</td>
+                        <td>{{ visit.timestamp|date:"Y-m-d H:i:s" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">No visits recorded for this user</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if not visitor.is_staff %}
+        <a href="{% url 'staff_student_detail' visitor.id %}" class="btn btn-outline-primary me-2">
+            <i class="fas fa-user"></i> View Student Profile
+        </a>
+    {% endif %}
+    <a href="{% url 'report_visit_users' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Visitors
+    </a>
+</div>
+{% endblock %}

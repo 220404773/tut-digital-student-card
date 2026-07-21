@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block title %}Website Visits - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Website Visits</h1>
+        <p class="lead">{{ total_count }} total visit{{ total_count|pluralize }}{% if total_count > 500 %} (showing the 500 most recent){% endif %}</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Path</th>
+                    <th>IP Address</th>
+                    <th>Timestamp</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for visit in visits %}
+                    <tr>
+                        <td>{{ visit.path }}</td>
+                        <td>{{ visit.ip_address|default:"-" }}</td>
+                        <td>{{ visit.timestamp|date:"Y-m-d H:i:s" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="3" class="text-center text-muted">No visits recorded yet</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Reports
+    </a>
+</div>
+{% endblock %}

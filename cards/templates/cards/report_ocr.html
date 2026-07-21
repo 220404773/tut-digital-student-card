@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ title }} - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <p class="lead">{{ ocr_records|length }} record{{ ocr_records|length|pluralize }}</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th>
+                    <th>Extraction Confidence</th>
+                    <th>Classification Confidence</th>
+                    <th>Duration</th>
+                    <th>Status</th>
+                    <th>Timestamp</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ocr in ocr_records %}
+                    <tr>
+                        <td>{{ ocr.user.get_full_name_display }}</td>
+                        <td>{{ ocr.ocr_confidence_score|floatformat:1 }}%</td>
+                        <td>{{ ocr.document_classification_confidence|floatformat:1 }}%</td>
+                        <td>{{ ocr.ocr_duration_seconds|floatformat:2 }}s</td>
+                        <td>
+                            {% if ocr.is_accurate %}
+                                <span class="badge bg-success">Accurate</span>
+                            {% elif ocr.manual_correction_required %}
+                                <span class="badge bg-warning text-dark">Needs Review</span>
+                            {% else %}
+                                <span class="badge bg-danger">Inaccurate</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ ocr.created_at|date:"Y-m-d H:i:s" }}</td>
+                        <td>
+                            <a href="{% url 'staff_student_detail' ocr.user.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-eye"></i> View Student
+                            </a>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">No OCR data yet</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Reports
+    </a>
+</div>
+{% endblock %}

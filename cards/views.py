@@ -1,0 +1,380 @@
+import functools
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
+from django.http import FileResponse, HttpResponse, JsonResponse
+from django.db.models import Avg, Max, Min, Count, Q
+from django.utils import timezone
+from datetime import timedelta
+from accounts.models import StudentUser
+from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
+from .utils import get_card_display_data, build_card_verification_url
+import qrcode
+
+
+def student_required(view_func):
+    """Staff/admin accounts have no student card - keep them off student-only
+    pages (they'd otherwise see "verification pending" banners or 404s)."""
+    @login_required(login_url='login')
+    @functools.wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        if request.user.is_staff:
+            return redirect('performance_dashboard')
+        return view_func(request, *args, **kwargs)
+    return wrapper
+
+
+@student_required
+def dashboard(request):
+    """
+    Student dashboard showing their digital card.
+    """
+    user = request.user
+    try:
+        student_card = StudentCard.objects.get(user=user)
+    except StudentCard.DoesNotExist:
+        student_card = None
+    
+    context = {
+        'student_card': student_card,
+        'is_verified': user.is_verified,
+        'card_data': get_card_display_data(student_card) if student_card else None,
+    }
+    return render(request, 'cards/dashboard.html', context)
+
+
+@student_required
+def view_card(request):
+    """
+    View the digital student card with all details.
+    """
+    user = request.user
+    student_card = get_object_or_404(StudentCard, user=user)
+    
+    # Log activity
+    CardActivity.objects.create(
+        student_card=student_card,
+        activity_type='viewed',
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+    
+    card_data = get_card_display_data(student_card)
+    
+    context = {
+        'card': student_card,
+        'card_data': card_data,
+        'user': user,
+    }
+    return render(request, 'cards/card.html', context)
+
+
+@student_required
+def download_qr_code(request, format_type='png'):
+    """
+    Download QR code in PNG or PDF format.
+    """
+    user = request.user
+    student_card = get_object_or_404(StudentCard, user=user)
+    
+    # Log activity
+    CardActivity.objects.create(
+        student_card=student_card,
+        activity_type='downloaded',
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+    
+    if student_card.qr_code:
+        # Return existing QR code
+        return FileResponse(
+            open(student_card.qr_code.path, 'rb'),
+            content_type='image/png',
+            as_attachment=True,
+            filename=f"student_card_qr_{student_card.card_number}.png"
+        )
+    else:
+        # Generate QR code on the fly
+        qr_data = build_card_verification_url(student_card.card_number, request)
+        qr = qrcode.QRCode(version=1, box_size=10, border=4)
+        qr.add_data(qr_data)
+        qr.make(fit=True)
+        
+        qr_image = qr.make_image(fill_color="black", back_color="white")
+        
+        response = HttpResponse(content_type='image/png')
+        response['Content-Disposition'] = f'attachment; filename="student_card_qr_{student_card.card_number}.png"'
+        qr_image.save(response, 'PNG')
+        return response
+
+
+@student_required
+def card_activity_log(request):
+    """
+    View activity log for student's card.
+    """
+    user = request.user
+    student_card = get_object_or_404(StudentCard, user=user)
+    
+    activities = CardActivity.objects.filter(student_card=student_card).order_by('-timestamp')[:50]
+    
+    context = {
+        'student_card': student_card,
+        'activities': activities,
+    }
+    return render(request, 'cards/activity_log.html', context)
+
+
+@student_required
+def verify_card(request):
+    """
+    Display full card details for visual verification (security check).
+    """
+    user = request.user
+    student_card = get_object_or_404(StudentCard, user=user)
+    
+    # Log verification activity
+    CardActivity.objects.create(
+        student_card=student_card,
+        activity_type='verified',
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+    
+    card_data = get_card_display_data(student_card)
+    
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse(card_data)
+    
+    context = {
+        'card': student_card,
+        'card_data': card_data,
+        'user': user,
+    }
+    return render(request, 'cards/verify.html', context)
+
+
+def verify_card_public(request, card_number):
+    """
+    Public card lookup that the QR code itself links to - lets campus staff
+    (or anyone) scan a card and see whether it's valid, without needing to
+    be logged in as that student. Deliberately omits contact details like
+    email that the authenticated verify_card view shows.
+    """
+    student_card = get_object_or_404(StudentCard, card_number=card_number)
+
+    CardActivity.objects.create(
+        student_card=student_card,
+        activity_type='verified',
+        ip_address=get_client_ip(request),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+
+    context = {
+        'card': student_card,
+        'user': student_card.user,
+    }
+    return render(request, 'cards/verify_public.html', context)
+
+
+def get_client_ip(request):
+    """Get client IP address from request."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+
+@staff_member_required(login_url='login')
+def performance_dashboard(request):
+    """
+    Admin dashboard showing system performance metrics.
+    Available to staff/admin users only.
+    """
+    # Signup metrics
+    signup_stats = SignupMetrics.objects.aggregate(
+        total_signups=Count('id'),
+        avg_signup_time=Avg('signup_duration_seconds'),
+        min_signup_time=Min('signup_duration_seconds'),
+        max_signup_time=Max('signup_duration_seconds'),
+        avg_file_size=Avg('file_upload_size_mb'),
+        avg_upload_time=Avg('file_upload_time_seconds'),
+    )
+    
+    # OCR metrics
+    ocr_stats = OCRMetrics.objects.aggregate(
+        total_ocr=Count('id'),
+        avg_ocr_time=Avg('ocr_duration_seconds'),
+        min_ocr_time=Min('ocr_duration_seconds'),
+        max_ocr_time=Max('ocr_duration_seconds'),
+        avg_confidence=Avg('ocr_confidence_score'),
+        avg_document_quality=Avg('document_quality_score'),
+        avg_classification_confidence=Avg('document_classification_confidence'),
+        accurate_count=Count('id', filter=Q(is_accurate=True)),
+        needs_review_count=Count('id', filter=Q(manual_correction_required=True)),
+    )
+
+    # Calculate accuracy percentage
+    if ocr_stats['total_ocr'] > 0:
+        ocr_stats['accuracy_percentage'] = (ocr_stats['accurate_count'] / ocr_stats['total_ocr']) * 100
+    else:
+        ocr_stats['accuracy_percentage'] = 0
+
+    # Card metrics
+    today = timezone.now().date()
+    card_stats = {
+        'active_cards': StudentCard.objects.filter(status='active').count(),
+        'expiring_soon': StudentCard.objects.filter(
+            status='active',
+            expiry_date__gte=today,
+            expiry_date__lte=today + timedelta(days=90),
+        ).count(),
+    }
+
+    # Site traffic
+    total_visits = PageVisit.objects.count()
+    distinct_visitors = PageVisit.objects.filter(user__isnull=False).values('user').distinct().count()
+
+    # Recent signups
+    recent_signups = SignupMetrics.objects.select_related('user').order_by('-created_at')[:10]
+
+    # Recent OCR processes
+    recent_ocr = OCRMetrics.objects.select_related('user').order_by('-created_at')[:10]
+
+    context = {
+        'signup_stats': signup_stats,
+        'ocr_stats': ocr_stats,
+        'card_stats': card_stats,
+        'total_visits': total_visits,
+        'distinct_visitors': distinct_visitors,
+        'recent_signups': recent_signups,
+        'recent_ocr': recent_ocr,
+    }
+
+    return render(request, 'cards/performance_dashboard.html', context)
+
+
+@staff_member_required(login_url='login')
+def report_cards(request):
+    """Drill-down behind the Active Student Cards / Expiring in 3 Months tiles."""
+    filter_type = request.GET.get('filter', 'active')
+    today = timezone.now().date()
+    cards = StudentCard.objects.select_related('user').filter(status='active')
+
+    if filter_type == 'expiring':
+        title = 'Cards Expiring in the Next 3 Months'
+        cards = cards.filter(expiry_date__gte=today, expiry_date__lte=today + timedelta(days=90))
+    else:
+        title = 'Active Student Cards'
+
+    return render(request, 'cards/report_cards.html', {
+        'title': title,
+        'cards': cards.order_by('expiry_date'),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_signups(request):
+    """Drill-down behind the signup performance tiles (total / avg time / avg file size / avg upload time)."""
+    signups = SignupMetrics.objects.select_related('user').order_by('-created_at')
+    return render(request, 'cards/report_signups.html', {'signups': signups})
+
+
+@staff_member_required(login_url='login')
+def report_ocr(request):
+    """Drill-down behind the OCR performance tiles, optionally filtered to one status bucket."""
+    filter_type = request.GET.get('filter')
+    ocr_records = OCRMetrics.objects.select_related('user').order_by('-created_at')
+
+    titles = {
+        'accurate': 'Accurate OCR Extractions',
+        'needs_review': 'OCR Extractions Needing Review',
+        'inaccurate': 'Inaccurate OCR Extractions',
+    }
+    if filter_type == 'accurate':
+        ocr_records = ocr_records.filter(is_accurate=True)
+    elif filter_type == 'needs_review':
+        ocr_records = ocr_records.filter(manual_correction_required=True)
+    elif filter_type == 'inaccurate':
+        ocr_records = ocr_records.filter(is_accurate=False, manual_correction_required=False)
+
+    return render(request, 'cards/report_ocr.html', {
+        'ocr_records': ocr_records,
+        'title': titles.get(filter_type, 'OCR Processing Details'),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_visits(request):
+    """Drill-down behind the Website Visits tile."""
+    all_visits = PageVisit.objects.order_by('-timestamp')
+    return render(request, 'cards/report_visits.html', {
+        'visits': all_visits[:500],
+        'total_count': all_visits.count(),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_visit_users(request):
+    """Drill-down behind the Distinct Users tile - one row per user who has
+    visited the site, with their visit count and most recent visit."""
+    visitors = (
+        StudentUser.objects
+        .filter(page_visits__isnull=False)
+        .annotate(visit_count=Count('page_visits'), last_visit=Max('page_visits__timestamp'))
+        .order_by('-last_visit')
+    )
+
+    return render(request, 'cards/report_visit_users.html', {'visitors': visitors})
+
+
+@staff_member_required(login_url='login')
+def report_user_visits(request, user_id):
+    """Drill-down behind a specific user's row - their full website visit history."""
+    visitor = get_object_or_404(StudentUser, pk=user_id)
+    visits = PageVisit.objects.filter(user=visitor).order_by('-timestamp')
+
+    return render(request, 'cards/report_user_visits.html', {
+        'visitor': visitor,
+        'visits': visits,
+    })
+
+
+@staff_member_required(login_url='login')
+def staff_student_list(request):
+    """Staff-only directory of all students, so admins can find and drill
+    into any student's profile and card without using the raw Django admin."""
+    query = request.GET.get('q', '')
+    students = StudentUser.objects.filter(is_staff=False)
+    if query:
+        students = students.filter(
+            Q(first_name__icontains=query) |
+            Q(last_name__icontains=query) |
+            Q(student_number__icontains=query) |
+            Q(email__icontains=query)
+        )
+
+    return render(request, 'cards/staff_student_list.html', {
+        'students': students.order_by('-date_joined'),
+        'query': query,
+    })
+
+
+@staff_member_required(login_url='login')
+def staff_student_detail(request, user_id):
+    """Staff-only read view of a single student's profile, card, and activity.
+    Editing is delegated to the Django admin change form rather than
+    duplicating a second edit UI."""
+    student = get_object_or_404(StudentUser, pk=user_id)
+    student_card = StudentCard.objects.filter(user=student).first()
+    activities = CardActivity.objects.filter(student_card=student_card).order_by('-timestamp')[:20] if student_card else []
+
+    return render(request, 'cards/staff_student_detail.html', {
+        'student': student,
+        'student_card': student_card,
+        'card_data': get_card_display_data(student_card) if student_card else None,
+        'activities': activities,
+    })

@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Card Verification - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Card Verification</h1>
+        <p class="lead">Verify your digital student card status</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-lg-6 mx-auto">
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0"><i class="fas fa-check-circle"></i> Card Valid</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Card Number</small>
+                            <p class="h6 mb-0">{{ card_data.card_number }}</p>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Status</small>
+                            <p class="h6 mb-0">
+                                <span class="badge bg-success">{{ card_data.status|upper }}</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Student Number</small>
+                            <p class="h6 mb-0">{{ card_data.student_number }}</p>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Full Name</small>
+                            <p class="h6 mb-0">{{ card_data.full_name }}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <small class="text-muted">Issued</small>
+                            <p class="h6 mb-0">{{ card_data.issue_date }}</p>
+                        </div>
+                        <div class="col-6">
+                            <small class="text-muted">Expires</small>
+                            <p class="h6 mb-0">{{ card_data.expiry_date }}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <small class="text-muted">Email</small>
+                            <p class="h6 mb-0">{{ card_data.email }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if card_data.qr_code_url %}
+                <div class="text-center mb-4">
+                    <img src="{{ card_data.qr_code_url }}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
+                </div>
+            {% endif %}
+            
+            <div class="d-grid gap-2">
+                <a href="{% url 'view_card' %}" class="btn btn-primary">
+                    <i class="fas fa-id-card"></i> View Full Card
+                </a>
+                <a href="{% url 'download_qr' %}" class="btn btn-outline-primary">
+                    <i class="fas fa-download"></i> Download QR Code
+                </a>
+                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

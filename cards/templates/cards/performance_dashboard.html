@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+
+{% block title %}Performance Dashboard - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>System Performance Dashboard</h1>
+        <p class="lead">Track signup and OCR performance metrics</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    {% if not user.is_staff %}
+        <div class="alert alert-danger">
+            <i class="fas fa-lock"></i> You do not have permission to access this page.
+        </div>
+    {% else %}
+        <!-- Overview Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-chart-pie"></i> Overview</h2>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_cards' %}?filter=active" class="tile-link">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Active Student Cards</h6>
+                            <h3>{{ card_stats.active_cards }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_cards' %}?filter=expiring" class="tile-link">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h6 class="card-title">Expiring in 3 Months</h6>
+                            <h3>{{ card_stats.expiring_soon }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_ocr' %}" class="tile-link">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Avg Document Classification</h6>
+                            <h3>{{ ocr_stats.avg_classification_confidence|floatformat:1 }}%</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_visits' %}" class="tile-link">
+                    <div class="card bg-secondary text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Website Visits</h6>
+                            <h3>{{ total_visits }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_visit_users' %}" class="tile-link">
+                    <div class="card bg-dark text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Distinct Users</h6>
+                            <h3>{{ distinct_visitors }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-12">
+                <a href="{% url 'staff_student_list' %}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-users"></i> View All Students
+                </a>
+            </div>
+        </div>
+
+        <!-- Signup Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-user-check"></i> Signup Performance</h2>
+            </div>
+
+            {% if signup_stats.total_signups %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Total Signups</h6>
+                                <h3>{{ signup_stats.total_signups }}</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Signup Time</h6>
+                                <h3>{{ signup_stats.avg_signup_time|floatformat:2 }}s</h3>
+                                <small>Min: {{ signup_stats.min_signup_time|floatformat:2 }}s | Max: {{ signup_stats.max_signup_time|floatformat:2 }}s</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg File Size</h6>
+                                <h3>{{ signup_stats.avg_file_size|floatformat:2 }} MB</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-warning text-dark">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Upload Time</h6>
+                                <h3>{{ signup_stats.avg_upload_time|floatformat:2 }}s</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Recent Signups -->
+                <div class="col-md-12 mt-4">
+                    <h5 class="mb-3">Recent Signups</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Signup Duration</th>
+                                    <th>File Size</th>
+                                    <th>Upload Time</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for signup in recent_signups %}
+                                    <tr>
+                                        <td><strong>{{ signup.user.email }}</strong></td>
+                                        <td>{{ signup.signup_duration_seconds|floatformat:2 }}s</td>
+                                        <td>{% if signup.file_upload_size_mb %}{{ signup.file_upload_size_mb|floatformat:2 }} MB{% else %}-{% endif %}</td>
+                                        <td>{% if signup.file_upload_time_seconds %}{{ signup.file_upload_time_seconds|floatformat:2 }}s{% else %}-{% endif %}</td>
+                                        <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No signup data yet</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No signup data available yet</div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- OCR Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-file-invoice"></i> OCR Performance</h2>
+            </div>
+
+            {% if ocr_stats.total_ocr %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_ocr' %}" class="tile-link">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Total OCR Processes</h6>
+                                <h3>{{ ocr_stats.total_ocr }}</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_ocr' %}" class="tile-link">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg OCR Time</h6>
+                                <h3>{{ ocr_stats.avg_ocr_time|floatformat:2 }}s</h3>
+                                <small>Min: {{ ocr_stats.min_ocr_time|floatformat:2 }}s | Max: {{ ocr_stats.max_ocr_time|floatformat:2 }}s</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_ocr' %}" class="tile-link">
+                        <div class="card {% if ocr_stats.accuracy_percentage >= 80 %}bg-success{% elif ocr_stats.accuracy_percentage >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">OCR Accuracy</h6>
+                                <h3>{{ ocr_stats.accuracy_percentage|floatformat:1 }}%</h3>
+                                <small>{{ ocr_stats.accurate_count }}/{{ ocr_stats.total_ocr }} accurate</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_ocr' %}" class="tile-link">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Confidence</h6>
+                                <h3>{{ ocr_stats.avg_confidence|floatformat:1 }}%</h3>
+                                <small>Quality: {{ ocr_stats.avg_document_quality|floatformat:1 }}%</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- OCR Status Breakdown -->
+                <div class="col-md-12 mt-3 mb-4">
+                    <h5>OCR Status Breakdown</h5>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <a href="{% url 'report_ocr' %}?filter=accurate" class="tile-link">
+                                <div class="card border-success">
+                                    <div class="card-body text-center">
+                                        <h5 class="text-success"><i class="fas fa-check-circle"></i> Accurate</h5>
+                                        <h3>{{ ocr_stats.accurate_count }}</h3>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a href="{% url 'report_ocr' %}?filter=needs_review" class="tile-link">
+                                <div class="card border-warning">
+                                    <div class="card-body text-center">
+                                        <h5 class="text-warning"><i class="fas fa-exclamation-circle"></i> Needs Review</h5>
+                                        <h3>{{ ocr_stats.needs_review_count }}</h3>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                        <div class="col-md-4">
+                            <a href="{% url 'report_ocr' %}?filter=inaccurate" class="tile-link">
+                                <div class="card border-danger">
+                                    <div class="card-body text-center">
+                                        <h5 class="text-danger"><i class="fas fa-times-circle"></i> Inaccurate</h5>
+                                        <h3>{{ ocr_stats.total_ocr|add:"-"|add:ocr_stats.accurate_count|add:"-"|add:ocr_stats.needs_review_count }}</h3>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent OCR Processes -->
+                <div class="col-md-12 mt-4">
+                    <h5 class="mb-3">Recent OCR Processes</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Confidence</th>
+                                    <th>Duration</th>
+                                    <th>Status</th>
+                                    <th>Quality</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ocr in recent_ocr %}
+                                    <tr>
+                                        <td><strong>{{ ocr.user.email }}</strong></td>
+                                        <td>
+                                            {% if ocr.ocr_confidence_score >= 80 %}
+                                                <span class="badge bg-success">{{ ocr.ocr_confidence_score|floatformat:1 }}%</span>
+                                            {% elif ocr.ocr_confidence_score >= 60 %}
+                                                <span class="badge bg-warning text-dark">{{ ocr.ocr_confidence_score|floatformat:1 }}%</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">{{ ocr.ocr_confidence_score|floatformat:1 }}%</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ ocr.ocr_duration_seconds|floatformat:2 }}s</td>
+                                        <td>
+                                            {% if ocr.is_accurate %}
+                                                <span class="badge bg-success"><i class="fas fa-check"></i> Accurate</span>
+                                            {% elif ocr.manual_correction_required %}
+                                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation"></i> Review</span>
+                                            {% else %}
+                                                <span class="badge bg-danger"><i class="fas fa-times"></i> Inaccurate</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ ocr.document_quality_score|floatformat:1 }}%</td>
+                                        <td>{{ ocr.created_at|date:"Y-m-d H:i:s" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted">No OCR data yet</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No OCR data available yet</div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Access Links -->
+        <div class="row mt-5">
+            <div class="col-md-12">
+                <hr>
+                <p class="text-muted text-center">
+                    <a href="{% url 'admin:index' %}">Go to Admin Panel</a> | 
+                    <a href="{% url 'dashboard' %}">Back to Dashboard</a>
+                </p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .card {
+        border: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s;
+    }
+
+    .card:hover {
+        transform: translateY(-2px);
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: #f5f5f5;
+    }
+
+    .tile-link {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        cursor: pointer;
+    }
+
+    .tile-link:hover {
+        text-decoration: none;
+        color: inherit;
+    }
+
+    .tile-link .card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+</style>
+{% endblock %}

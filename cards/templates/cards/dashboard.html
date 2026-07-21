@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Welcome, {{ user.first_name }}!</h1>
+        <p class="lead">Your Digital Student Card Dashboard</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    {% if not user.is_verified %}
+        <div class="alert alert-warning">
+            <i class="fas fa-exclamation-triangle"></i> 
+            <strong>Verification Pending:</strong> Your registration proof is being processed. You will receive a confirmation once verified.
+        </div>
+    {% endif %}
+    
+    <div class="row">
+        <div class="col-lg-8">
+            {% if student_card %}
+                <h2 class="mb-4">Your Digital Student Card</h2>
+                
+                <div class="student-card mb-4">
+                    <div class="student-card-content">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <small>Card Number</small>
+                                <p class="h5 mb-0">{{ student_card.card_number }}</p>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-success">{{ student_card.status|upper }}</span>
+                            </div>
+                        </div>
+                        
+                        <hr style="border-color: rgba(255,255,255,0.3);">
+
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            {% if user.profile_picture %}
+                                <img src="{{ user.profile_picture.url }}" alt="Student photo"
+                                     class="rounded-circle" style="width: 56px; height: 56px; object-fit: cover; border: 2px solid rgba(255,255,255,0.6);">
+                            {% else %}
+                                <div class="rounded-circle d-flex align-items-center justify-content-center"
+                                     style="width: 56px; height: 56px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.6);">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                            {% endif %}
+                            <div>
+                                <h4 class="mb-1">{{ user.get_full_name_display }}</h4>
+                                <p class="mb-0">{{ user.student_number }}</p>
+                            </div>
+                        </div>
+                        
+                        <small class="d-block mb-3">Valid until: {{ student_card.expiry_date|date:"M d, Y" }}</small>
+                        
+                        <div class="d-flex gap-2 mt-4">
+                            <a href="{% url 'view_card' %}" class="btn btn-light btn-sm flex-grow-1">
+                                <i class="fas fa-eye"></i> View Full Card
+                            </a>
+                            <a href="{% url 'download_qr' %}" class="btn btn-light btn-sm flex-grow-1">
+                                <i class="fas fa-download"></i> Download QR
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-check-circle fa-3x text-success mb-3"></i>
+                                <h6>Status</h6>
+                                <p class="mb-0 h5 text-success">{{ student_card.status|upper }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <i class="fas fa-history fa-3x text-info mb-3"></i>
+                                <h6>Last Activity</h6>
+                                <p class="mb-0 h5 text-info">
+                                    {% with latest_activity=student_card.activities.first %}
+                                        {% if latest_activity %}
+                                            {{ latest_activity.get_activity_type_display }}
+                                        {% else %}
+                                            No activity
+                                        {% endif %}
+                                    {% endwith %}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+            {% else %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>Card Pending:</strong> Your digital card will be generated once your registration is verified.
+                </div>
+            {% endif %}
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-user"></i> Profile Information</h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">
+                        <strong>Name:</strong><br>
+                        {{ user.get_full_name_display }}
+                    </p>
+                    <p class="mb-2">
+                        <strong>Student Number:</strong><br>
+                        {{ user.student_number }}
+                    </p>
+                    <p class="mb-2">
+                        <strong>Email:</strong><br>
+                        {{ user.email }}
+                    </p>
+                    <p class="mb-2">
+                        <strong>Phone:</strong><br>
+                        {{ user.phone|default:"Not provided" }}
+                    </p>
+                    <p class="mb-3">
+                        <strong>Status:</strong><br>
+                        {% if user.is_verified %}
+                            <span class="badge bg-success">Verified</span>
+                        {% else %}
+                            <span class="badge bg-warning">Pending</span>
+                        {% endif %}
+                    </p>
+                    <a href="{% url 'profile' %}" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fas fa-edit"></i> Edit Profile
+                    </a>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0"><i class="fas fa-link"></i> Quick Links</h6>
+                </div>
+                <div class="card-body">
+                    {% if student_card %}
+                        <a href="{% url 'view_card' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
+                            <i class="fas fa-id-card"></i> View Card
+                        </a>
+                        <a href="{% url 'download_qr' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
+                            <i class="fas fa-qrcode"></i> Download QR Code
+                        </a>
+                        <a href="{% url 'card_activity' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
+                            <i class="fas fa-history"></i> Activity Log
+                        </a>
+                    {% endif %}
+                    <a href="{% url 'user_search' %}" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fas fa-search"></i> Find Students
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+
+{% block title %}Student Profile - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>{{ student.get_full_name_display }}</h1>
+        <p class="lead">Student Profile</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title"><i class="fas fa-user"></i> Personal Information</h6>
+                            <p class="mb-2">
+                                <strong>Full Name:</strong><br>
+                                {{ student.get_full_name_display }}
+                            </p>
+                            <p class="mb-2">
+                                <strong>Student Number:</strong><br>
+                                {{ student.student_number }}
+                            </p>
+                            <p class="mb-0">
+                                <strong>Email:</strong><br>
+                                {{ student.email }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h6 class="card-title"><i class="fas fa-info-circle"></i> Verification Status</h6>
+                            <p class="mb-2">
+                                <strong>Status:</strong><br>
+                                {% if student.is_verified %}
+                                    <span class="badge bg-success">Verified</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Pending</span>
+                                {% endif %}
+                            </p>
+                            <p class="mb-0">
+                                <strong>Member Since:</strong><br>
+                                <small>{{ student.date_joined|date:"M d, Y" }}</small>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            {% if student.student_card %}
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0"><i class="fas fa-id-card"></i> Digital Card Information</h6>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-2">
+                            <strong>Card Number:</strong><br>
+                            {{ student.student_card.card_number }}
+                        </p>
+                        <p class="mb-2">
+                            <strong>Card Status:</strong><br>
+                            <span class="badge bg-info">{{ student.student_card.status|upper }}</span>
+                        </p>
+                        <p class="mb-0">
+                            <strong>Valid Until:</strong><br>
+                            {{ student.student_card.expiry_date|date:"M d, Y" }}
+                        </p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
