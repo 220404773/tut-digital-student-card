@@ -26,8 +26,8 @@ class SignupMetricsAdmin(admin.ModelAdmin):
     list_display = ('user_email', 'signup_duration_display', 'file_size_display', 'created_date')
     list_filter = ('created_at',)
     search_fields = ('user__email', 'user__first_name', 'user__last_name')
-    readonly_fields = ('signup_start_time', 'signup_end_time', 'signup_duration_seconds', 
-                       'file_upload_size_mb', 'file_upload_time_seconds', 'created_at')
+    readonly_fields = ('signup_start_time', 'signup_end_time', 'signup_duration_seconds',
+                       'file_upload_size_mb', 'created_at')
     
     def user_email(self, obj):
         return obj.user.email

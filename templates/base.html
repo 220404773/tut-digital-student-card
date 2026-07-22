@@ -34,6 +34,22 @@
         .page-header { background: var(--tut-blue); color: white; padding: 40px 0; margin-bottom: 30px; }
         .form-control:focus { border-color: var(--tut-blue); box-shadow: 0 0 0 0.2rem rgba(0, 93, 170, 0.25); }
         footer { background: #003d7a; color: white; padding: 20px 0; margin-top: 50px; }
+
+        .password-toggle-wrapper { position: relative; }
+        .password-toggle-wrapper input { padding-right: 2.5rem; }
+        .password-toggle-btn {
+            position: absolute;
+            top: 50%;
+            right: 0.5rem;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            padding: 0.25rem;
+            line-height: 1;
+            color: #6c757d;
+        }
+        .password-toggle-btn:hover { color: var(--tut-blue); }
+        .password-toggle-btn:focus-visible { outline: 2px solid var(--tut-blue); outline-offset: 2px; }
     </style>
 </head>
 <body>
@@ -139,6 +155,29 @@
 
         wireLivePasswordMatch('id_password1', 'id_password2');
         wireLivePasswordMatch('id_new_password1', 'id_new_password2');
+
+        // Show/hide toggle (eye icon) on every password field in the app -
+        // login, signup, password reset, change password.
+        document.querySelectorAll('input[type="password"]').forEach(function (input) {
+            var wrapper = document.createElement('div');
+            wrapper.className = 'password-toggle-wrapper';
+            input.parentNode.insertBefore(wrapper, input);
+            wrapper.appendChild(input);
+
+            var toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.className = 'password-toggle-btn';
+            toggle.setAttribute('aria-label', 'Show password');
+            toggle.innerHTML = '<i class="fas fa-eye"></i>';
+            wrapper.appendChild(toggle);
+
+            toggle.addEventListener('click', function () {
+                var isHidden = input.type === 'password';
+                input.type = isHidden ? 'text' : 'password';
+                toggle.innerHTML = isHidden ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+                toggle.setAttribute('aria-label', isHidden ? 'Hide password' : 'Show password');
+            });
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

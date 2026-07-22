@@ -19,7 +19,7 @@
                     <th>Email</th>
                     <th>Signup Duration</th>
                     <th>File Size</th>
-                    <th>Upload Time</th>
+                    <th>Verified</th>
                     <th>Timestamp</th>
                     <th></th>
                 </tr>
@@ -31,7 +31,13 @@
                         <td>{{ signup.user.email }}</td>
                         <td>{{ signup.signup_duration_seconds|floatformat:2 }}s</td>
                         <td>{% if signup.file_upload_size_mb %}{{ signup.file_upload_size_mb|floatformat:2 }} MB{% else %}-{% endif %}</td>
-                        <td>{% if signup.file_upload_time_seconds %}{{ signup.file_upload_time_seconds|floatformat:2 }}s{% else %}-{% endif %}</td>
+                        <td>
+                            {% if signup.user.is_verified %}
+                                <span class="badge bg-success">Verified</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Pending</span>
+                            {% endif %}
+                        </td>
                         <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
                         <td>
                             <a href="{% url 'staff_student_detail' signup.user.id %}" class="btn btn-sm btn-outline-primary">

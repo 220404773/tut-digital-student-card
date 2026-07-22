@@ -42,7 +42,6 @@ class SignupMetrics(models.Model):
     signup_end_time = models.DateTimeField()
     signup_duration_seconds = models.FloatField()  # Time taken to complete signup
     file_upload_size_mb = models.FloatField(null=True, blank=True)
-    file_upload_time_seconds = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:

@@ -6,7 +6,24 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = config('SECRET_KEY', default='dev-key-change-in-production')
 DEBUG = config('DEBUG', default=True, cast=bool)
-ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default='localhost,127.0.0.1',
+    cast=lambda v: [h.strip() for h in v.split(',') if h.strip()],
+)
+
+# DigitalOcean App Platform (and most PaaS hosts) terminate HTTPS at a load
+# balancer and forward plain HTTP to the container - without this, Django's
+# request.is_secure() (and so request.build_absolute_uri(), which the QR
+# code URLs depend on) would think every request is insecure and generate
+# http:// links even when the site is served over https://.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week to start; raise once confirmed working
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -84,6 +101,25 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Profile pictures and QR codes need durable storage - a PaaS container's
+# local disk doesn't survive a redeploy and isn't shared across instances.
+# Set AWS_STORAGE_BUCKET_NAME (a DigitalOcean Spaces bucket, which is
+# S3-compatible) to switch media storage there; unset, local dev keeps
+# using the filesystem exactly as before.
+AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
+if AWS_STORAGE_BUCKET_NAME:
+    AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
+    AWS_SECRET_ACCESS_KEY = config('AWS_SECRET_ACCESS_KEY', default='')
+    AWS_S3_ENDPOINT_URL = config('AWS_S3_ENDPOINT_URL', default='https://ams3.digitaloceanspaces.com')
+    AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='ams3')
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
+    STORAGES = {
+        'default': {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+    MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

@@ -201,8 +201,14 @@ def performance_dashboard(request):
         min_signup_time=Min('signup_duration_seconds'),
         max_signup_time=Max('signup_duration_seconds'),
         avg_file_size=Avg('file_upload_size_mb'),
-        avg_upload_time=Avg('file_upload_time_seconds'),
+        verified_count=Count('id', filter=Q(user__is_verified=True)),
     )
+
+    # Share of signups that OCR auto-verified without needing manual review.
+    if signup_stats['total_signups'] > 0:
+        signup_stats['verification_rate'] = (signup_stats['verified_count'] / signup_stats['total_signups']) * 100
+    else:
+        signup_stats['verification_rate'] = 0
     
     # OCR metrics
     ocr_stats = OCRMetrics.objects.aggregate(

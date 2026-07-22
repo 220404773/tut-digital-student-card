@@ -127,10 +127,11 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card bg-warning text-dark">
+                        <div class="card {% if signup_stats.verification_rate >= 80 %}bg-success{% elif signup_stats.verification_rate >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
                             <div class="card-body">
-                                <h6 class="card-title">Avg Upload Time</h6>
-                                <h3>{{ signup_stats.avg_upload_time|floatformat:2 }}s</h3>
+                                <h6 class="card-title">Verification Rate</h6>
+                                <h3>{{ signup_stats.verification_rate|floatformat:1 }}%</h3>
+                                <small>{{ signup_stats.verified_count }}/{{ signup_stats.total_signups }} auto-verified</small>
                             </div>
                         </div>
                     </a>
@@ -146,7 +147,7 @@
                                     <th>Email</th>
                                     <th>Signup Duration</th>
                                     <th>File Size</th>
-                                    <th>Upload Time</th>
+                                    <th>Verified</th>
                                     <th>Timestamp</th>
                                 </tr>
                             </thead>
@@ -156,7 +157,13 @@
                                         <td><strong>{{ signup.user.email }}</strong></td>
                                         <td>{{ signup.signup_duration_seconds|floatformat:2 }}s</td>
                                         <td>{% if signup.file_upload_size_mb %}{{ signup.file_upload_size_mb|floatformat:2 }} MB{% else %}-{% endif %}</td>
-                                        <td>{% if signup.file_upload_time_seconds %}{{ signup.file_upload_time_seconds|floatformat:2 }}s{% else %}-{% endif %}</td>
+                                        <td>
+                                            {% if signup.user.is_verified %}
+                                                <span class="badge bg-success">Verified</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">Pending</span>
+                                            {% endif %}
+                                        </td>
                                         <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
                                     </tr>
                                 {% empty %}
