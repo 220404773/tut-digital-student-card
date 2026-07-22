@@ -222,3 +222,57 @@ class FileUploadValidationTests(TestCase):
         form = self._form(real)
         form.is_valid()
         self.assertNotIn('registration_proof', form.errors)
+
+
+class EmailConfirmationTests(TestCase):
+    """Identity trust used to rest entirely on OCR reading an uploaded
+    document (which can be edited/forged) - this adds an independent check
+    that the student actually controls the email address on the account."""
+
+    def setUp(self):
+        cache.clear()
+        self.user = make_user(email_confirmed=False)
+
+    def test_new_users_default_to_unconfirmed(self):
+        self.assertFalse(self.user.email_confirmed)
+
+    def test_valid_confirmation_link_confirms_email(self):
+        import re
+        self.client.force_login(self.user)
+        self.client.post(reverse('resend_confirmation'))
+        self.assertEqual(len(mail.outbox), 1)
+
+        match = re.search(r'(/accounts/confirm-email/\S+/)', mail.outbox[0].body)
+        self.assertIsNotNone(match)
+
+        self.client.get(match.group(1))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.email_confirmed)
+
+    def test_invalid_token_is_rejected(self):
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        response = self.client.get(reverse('confirm_email', args=[uid, 'bogus-token']), follow=True)
+        self.assertContains(response, 'invalid or has expired')
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.email_confirmed)
+
+    def test_dashboard_shows_confirmation_banner_when_unconfirmed(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Confirm your email')
+
+    def test_dashboard_hides_banner_once_confirmed(self):
+        self.user.email_confirmed = True
+        self.user.save()
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, 'Confirm your email')
+
+    def test_resend_is_rate_limited(self):
+        self.client.force_login(self.user)
+        for _ in range(5):
+            self.client.post(reverse('resend_confirmation'))
+        response = self.client.post(reverse('resend_confirmation'), follow=True)
+        self.assertContains(response, 'Too many resend attempts')

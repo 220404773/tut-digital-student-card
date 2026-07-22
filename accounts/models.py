@@ -22,6 +22,12 @@ class StudentUser(AbstractUser):
     is_verified = models.BooleanField(default=False)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
 
+    # Confirms the student actually controls the email address on the
+    # account - independent of is_verified, which only checks that an
+    # uploaded document was read successfully (a document can be edited;
+    # this checks the mailbox is real and reachable).
+    email_confirmed = models.BooleanField(default=False)
+
     # Auto-extracted from document
     ocr_student_number = models.CharField(max_length=20, null=True, blank=True)
     ocr_full_name = models.CharField(max_length=255, null=True, blank=True)

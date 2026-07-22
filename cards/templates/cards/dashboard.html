@@ -13,8 +13,21 @@
 <div class="container my-5">
     {% if not user.is_verified %}
         <div class="alert alert-warning">
-            <i class="fas fa-exclamation-triangle"></i> 
+            <i class="fas fa-exclamation-triangle"></i>
             <strong>Verification Pending:</strong> Your registration proof is being processed. You will receive a confirmation once verified.
+        </div>
+    {% endif %}
+
+    {% if not user.email_confirmed %}
+        <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>
+                <i class="fas fa-envelope"></i>
+                <strong>Confirm your email:</strong> Please click the confirmation link we sent to {{ user.email }}.
+            </span>
+            <form method="post" action="{% url 'resend_confirmation' %}" class="mb-0">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-dark">Resend email</button>
+            </form>
         </div>
     {% endif %}
     

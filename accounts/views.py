@@ -1,16 +1,22 @@
 from urllib.parse import urlencode
+from django.conf import settings
+from django.core.mail import send_mail
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django_ratelimit.decorators import ratelimit
 from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.db import models
 from .models import StudentUser
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
+from .tokens import email_confirmation_token
 from cards.models import StudentCard, SignupMetrics, OCRMetrics
 from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, link_recent_anonymous_visits
 
@@ -19,6 +25,27 @@ def post_login_redirect(user):
     """Staff/admin accounts have no student card - send them to the admin
     reporting page instead of the student dashboard."""
     return redirect('performance_dashboard') if user.is_staff else redirect('dashboard')
+
+
+def send_confirmation_email(user, request):
+    """Email a link that proves the student controls the email address on
+    their account - independent of the OCR document check, which only
+    confirms a document was read successfully, not who's holding it."""
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = email_confirmation_token.make_token(user)
+    confirm_path = reverse('confirm_email', args=[uid, token])
+    confirm_url = request.build_absolute_uri(confirm_path)
+
+    body = render_to_string('accounts/email_confirmation_email.html', {
+        'user': user,
+        'confirm_url': confirm_url,
+    })
+    send_mail(
+        subject='Confirm your TUT Digital Student Card email',
+        message=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+    )
 
 
 def split_full_name(full_name):
@@ -238,6 +265,12 @@ def signup(request):
             # form) to the account that just got created.
             link_recent_anonymous_visits(user, request)
 
+            try:
+                send_confirmation_email(user, request)
+                messages.info(request, 'Please check your email to confirm your address.')
+            except Exception as e:
+                print(f"Error sending confirmation email: {str(e)}")
+
             return redirect('dashboard')
         else:
             # An email or student number that's already registered means
@@ -264,6 +297,43 @@ def signup(request):
         form = CustomUserCreationForm()
     
     return render(request, 'accounts/signup.html', {'form': form})
+
+
+def confirm_email(request, uidb64, token):
+    """Landing page for the link sent by send_confirmation_email."""
+    try:
+        uid = urlsafe_base64_decode(uidb64).decode()
+        user = StudentUser.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, StudentUser.DoesNotExist):
+        user = None
+
+    if user is not None and email_confirmation_token.check_token(user, token):
+        user.email_confirmed = True
+        user.save()
+        messages.success(request, 'Your email address has been confirmed!')
+    else:
+        messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your dashboard.')
+
+    if request.user.is_authenticated:
+        return post_login_redirect(request.user)
+    return redirect('login')
+
+
+@login_required(login_url='login')
+@ratelimit(key='user', rate='5/h', method='POST', block=False)
+def resend_confirmation_email(request):
+    """Lets a student request a fresh confirmation link if the first one
+    expired or never arrived."""
+    if request.method == 'POST' and not getattr(request, 'limited', False):
+        if not request.user.email_confirmed:
+            try:
+                send_confirmation_email(request.user, request)
+                messages.success(request, 'Confirmation email sent - please check your inbox.')
+            except Exception as e:
+                messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
+    elif getattr(request, 'limited', False):
+        messages.error(request, 'Too many resend attempts - please wait a while and try again.')
+    return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
 
 
 @require_http_methods(['GET', 'POST'])
