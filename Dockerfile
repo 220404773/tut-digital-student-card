@@ -1,10 +1,14 @@
 FROM python:3.12-slim
 
-# Tesseract for OCR, libgl1/libglib2.0-0 for OpenCV (deskew/binarize preprocessing).
+# Tesseract for OCR, libgl1/libglib2.0-0 for OpenCV (deskew/binarize
+# preprocessing), gcc/libpq-dev so psycopg2-binary can build from source if
+# no prebuilt wheel matches this image (it doesn't always ship one).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     libgl1 \
     libglib2.0-0 \
+    gcc \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
