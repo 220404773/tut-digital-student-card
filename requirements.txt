@@ -4,12 +4,12 @@ qrcode==7.4.2
 pytesseract==0.3.10
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
-# Newer than what's on PyPI's metadata for Django 4.2 compatibility
-# (django-crispy-forms 2.6 states it wants Django>=5.2), but this exact
-# combination is verified working against Django 4.2.30 above - the
-# metadata warning pip shows on install is safe to ignore here.
-django-crispy-forms==2.6
-crispy-bootstrap5==2026.3
+# Pinned to the last versions that actually support Django 4.2 - newer
+# django-crispy-forms releases hard-require Django>=5.2 (a real install-time
+# constraint, not just metadata - a clean `pip install -r requirements.txt`
+# fails with ResolutionImpossible on anything newer than this).
+django-crispy-forms==2.1
+crispy-bootstrap5==2024.2
 python-decouple==3.8
 PyMuPDF==1.24.10
 langchain-nvidia-ai-endpoints>=0.3.10
