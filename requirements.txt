@@ -1,11 +1,15 @@
-Django==4.2.0
-Pillow==10.0.0
+Django==4.2.30
+Pillow==12.3.0
 qrcode==7.4.2
 pytesseract==0.3.10
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
-django-crispy-forms==2.1
-crispy-bootstrap5>=2024.1
+# Newer than what's on PyPI's metadata for Django 4.2 compatibility
+# (django-crispy-forms 2.6 states it wants Django>=5.2), but this exact
+# combination is verified working against Django 4.2.30 above - the
+# metadata warning pip shows on install is safe to ignore here.
+django-crispy-forms==2.6
+crispy-bootstrap5==2026.3
 python-decouple==3.8
 PyMuPDF==1.24.10
 langchain-nvidia-ai-endpoints>=0.3.10
@@ -14,3 +18,4 @@ gunicorn==21.2.0
 whitenoise==6.5.0
 django-storages==1.14.4
 boto3==1.34.144
+django-ratelimit==4.1.0

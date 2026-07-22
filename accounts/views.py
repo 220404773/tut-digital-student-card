@@ -4,6 +4,7 @@ from django.contrib.auth import authenticate, login, logout, update_session_auth
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
+from django_ratelimit.decorators import ratelimit
 from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -33,11 +34,28 @@ def split_full_name(full_name):
 
 
 @require_http_methods(['POST'])
+@ratelimit(key='ip', rate='20/h', method='POST', block=False)
 def preview_registration_proof(request):
     """Return OCR data for a registration proof without creating an account."""
+    if getattr(request, 'limited', False):
+        return JsonResponse({'success': False, 'message': 'Too many uploads - please wait a while and try again.'}, status=429)
+
     registration_proof = request.FILES.get('registration_proof')
     if not registration_proof:
         return JsonResponse({'success': False, 'message': 'No file uploaded.'}, status=400)
+
+    if registration_proof.size > 5242880:
+        return JsonResponse({'success': False, 'message': 'File size exceeds 5MB limit.'}, status=400)
+
+    ext = registration_proof.name.split('.')[-1].lower()
+    if ext not in CustomUserCreationForm.FILE_SIGNATURES:
+        return JsonResponse({'success': False, 'message': 'Invalid file format. Allowed: PDF, JPG, PNG'}, status=400)
+
+    registration_proof.seek(0)
+    header = registration_proof.read(8)
+    registration_proof.seek(0)
+    if not any(header.startswith(sig) for sig in CustomUserCreationForm.FILE_SIGNATURES[ext]):
+        return JsonResponse({'success': False, 'message': 'This file does not look like a valid PDF, JPG, or PNG.'}, status=400)
 
     try:
         ocr_result = process_registration_proof(registration_proof)
@@ -81,12 +99,17 @@ def preview_registration_proof(request):
 
 
 @require_http_methods(['GET', 'POST'])
+@ratelimit(key='ip', rate='10/h', method='POST', block=False)
 def signup(request):
     """
     Handle user registration and proof of registration upload.
     """
     if request.user.is_authenticated:
         return post_login_redirect(request.user)
+
+    if request.method == 'POST' and getattr(request, 'limited', False):
+        messages.error(request, 'Too many signup attempts from your network. Please wait a while and try again.')
+        return render(request, 'accounts/signup.html', {'form': CustomUserCreationForm()})
 
     if request.method == 'POST':
         signup_start_time = timezone.now()
@@ -244,6 +267,7 @@ def signup(request):
 
 
 @require_http_methods(['GET', 'POST'])
+@ratelimit(key='ip', rate='10/m', method='POST', block=False)
 def login_view(request):
     """
     Handle user login. Errors are attached to the specific field (email vs
@@ -254,6 +278,10 @@ def login_view(request):
         return post_login_redirect(request.user)
 
     form = LoginForm(request.POST or None, initial={'email': request.GET.get('email', '')})
+
+    if request.method == 'POST' and getattr(request, 'limited', False):
+        messages.error(request, 'Too many login attempts from your network. Please wait a minute and try again.')
+        return render(request, 'accounts/login.html', {'form': form})
 
     if request.method == 'POST' and form.is_valid():
         email = form.cleaned_data['email']

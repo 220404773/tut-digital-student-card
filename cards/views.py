@@ -3,6 +3,7 @@ import functools
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
+from django_ratelimit.decorators import ratelimit
 from django.http import FileResponse, HttpResponse, JsonResponse
 from django.db.models import Avg, Max, Min, Count, Q
 from django.utils import timezone
@@ -155,13 +156,20 @@ def verify_card(request):
     return render(request, 'cards/verify.html', context)
 
 
+@ratelimit(key='ip', rate='60/m', method='GET', block=False)
 def verify_card_public(request, card_number):
     """
     Public card lookup that the QR code itself links to - lets campus staff
     (or anyone) scan a card and see whether it's valid, without needing to
     be logged in as that student. Deliberately omits contact details like
     email that the authenticated verify_card view shows.
+
+    Rate-limited per IP - it's a public, unauthenticated endpoint, so
+    without this it would be an easy way to script through card numbers.
     """
+    if getattr(request, 'limited', False):
+        return HttpResponse('Too many requests - please wait a moment and try again.', status=429)
+
     student_card = get_object_or_404(StudentCard, card_number=card_number)
 
     CardActivity.objects.create(

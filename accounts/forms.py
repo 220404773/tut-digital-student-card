@@ -40,6 +40,15 @@ class CustomUserCreationForm(UserCreationForm):
             raise forms.ValidationError('Student number already registered.')
         return student_number
     
+    # Magic bytes for each allowed type - checked against actual file content,
+    # not just the filename extension, which anyone can rename.
+    FILE_SIGNATURES = {
+        'pdf': (b'%PDF-',),
+        'jpg': (b'\xff\xd8\xff',),
+        'jpeg': (b'\xff\xd8\xff',),
+        'png': (b'\x89PNG\r\n\x1a\n',),
+    }
+
     def clean_registration_proof(self):
         registration_proof = self.cleaned_data.get('registration_proof')
         if registration_proof:
@@ -51,6 +60,16 @@ class CustomUserCreationForm(UserCreationForm):
             ext = registration_proof.name.split('.')[-1].lower()
             if ext not in allowed_extensions:
                 raise forms.ValidationError('Invalid file format. Allowed: PDF, JPG, PNG')
+
+            # Check the file's actual content matches its claimed type - a
+            # renamed executable or script with a .pdf/.png extension would
+            # otherwise sail straight through the check above.
+            registration_proof.seek(0)
+            header = registration_proof.read(8)
+            registration_proof.seek(0)
+            expected_signatures = self.FILE_SIGNATURES.get(ext, ())
+            if not any(header.startswith(sig) for sig in expected_signatures):
+                raise forms.ValidationError('This file does not look like a valid PDF, JPG, or PNG. Please upload the original file.')
         return registration_proof
 
 
