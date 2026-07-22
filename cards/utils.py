@@ -70,7 +70,10 @@ def get_llm_client():
         return None
 
     return ChatNVIDIA(
-        model='meta/llama3-70b-instruct',
+        # llama3-70b-instruct was removed from NVIDIA's catalog (calls started
+        # returning a hard 404), which silently broke OCR classification for
+        # every real upload and dropped it to the much stricter regex fallback.
+        model='meta/llama-3.3-70b-instruct',
         nvidia_api_key=api_key,
     )
 
