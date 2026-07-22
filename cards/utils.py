@@ -637,13 +637,15 @@ def generate_student_card(user, request=None):
             # Create image from QR code
             qr_image = qr.make_image(fill_color="black", back_color="white")
             
-            # Save QR code
+            # Save QR code through the FileField's own storage API (not a raw
+            # MEDIA_ROOT path) so this lands in the configured backend - local
+            # disk in dev, but S3/Spaces in production, where a container-local
+            # file would never actually be reachable at the saved URL.
+            from django.core.files.base import ContentFile
             qr_filename = f"qr_{card_number}.png"
-            qr_path = os.path.join(settings.MEDIA_ROOT, 'qr_codes', qr_filename)
-            os.makedirs(os.path.dirname(qr_path), exist_ok=True)
-            qr_image.save(qr_path)
-            
-            student_card.qr_code.name = f'qr_codes/{qr_filename}'
+            buffer = io.BytesIO()
+            qr_image.save(buffer, format='PNG')
+            student_card.qr_code.save(qr_filename, ContentFile(buffer.getvalue()), save=False)
             student_card.save()
             
             # Log activity

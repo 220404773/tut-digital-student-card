@@ -204,16 +204,15 @@ def signup(request):
             
             user.save()
             
-            # Delete the uploaded proof file after processing (POPIA compliance)
+            # Delete the uploaded proof file after processing (POPIA compliance).
+            # Goes through the storage backend's own API (not raw os.path/MEDIA_ROOT)
+            # so this also works when storage is S3/Spaces-backed, not just local disk.
             if user.registration_proof:
                 try:
-                    import os
-                    from django.conf import settings
-                    proof_path = os.path.join(settings.MEDIA_ROOT, str(user.registration_proof))
-                    if os.path.exists(proof_path):
-                        os.remove(proof_path)
-                        user.registration_proof = None
-                        user.save()
+                    if user.registration_proof.storage.exists(user.registration_proof.name):
+                        user.registration_proof.storage.delete(user.registration_proof.name)
+                    user.registration_proof = None
+                    user.save()
                 except Exception as e:
                     print(f"Error deleting proof file: {str(e)}")
             

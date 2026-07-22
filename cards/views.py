@@ -88,9 +88,11 @@ def download_qr_code(request, format_type='png'):
     )
     
     if student_card.qr_code:
-        # Return existing QR code
+        # Read through the FieldFile itself (which goes via the storage
+        # backend's open()) rather than .path - S3Boto3Storage doesn't
+        # support .path at all, only local FileSystemStorage does.
         return FileResponse(
-            open(student_card.qr_code.path, 'rb'),
+            student_card.qr_code.open('rb'),
             content_type='image/png',
             as_attachment=True,
             filename=f"student_card_qr_{student_card.card_number}.png"
