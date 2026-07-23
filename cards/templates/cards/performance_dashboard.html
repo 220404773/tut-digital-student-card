@@ -182,6 +182,57 @@
             {% endif %}
         </div>
 
+        <!-- Email Confirmation Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-envelope-circle-check"></i> Email Confirmation</h2>
+            </div>
+
+            {% if email_confirmation_stats.total_students %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
+                        <div class="card {% if email_confirmation_stats.confirmation_rate >= 80 %}bg-success{% elif email_confirmation_stats.confirmation_rate >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Email Confirmation Rate</h6>
+                                <h3>{{ email_confirmation_stats.confirmation_rate|floatformat:1 }}%</h3>
+                                <small>{{ email_confirmation_stats.confirmed_count }}/{{ email_confirmation_stats.total_students }} confirmed</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
+                        <div class="card bg-info text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Time to Confirm</h6>
+                                <h3>{% if email_confirmation_stats.avg_confirmation_time %}{{ email_confirmation_stats.avg_confirmation_time }}{% else %}-{% endif %}</h3>
+                                <small>
+                                    Min: {% if email_confirmation_stats.min_confirmation_time %}{{ email_confirmation_stats.min_confirmation_time }}{% else %}-{% endif %}
+                                    | Max: {% if email_confirmation_stats.max_confirmation_time %}{{ email_confirmation_stats.max_confirmation_time }}{% else %}-{% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=unconfirmed" class="tile-link">
+                        <div class="card bg-secondary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Awaiting Confirmation</h6>
+                                <h3>{{ email_confirmation_stats.total_students|add:"-"|add:email_confirmation_stats.confirmed_count }}</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No student data available yet</div>
+                </div>
+            {% endif %}
+        </div>
+
         <!-- OCR Metrics Section -->
         <div class="row mb-5">
             <div class="col-md-12">

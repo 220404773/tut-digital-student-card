@@ -27,6 +27,7 @@ class StudentUser(AbstractUser):
     # uploaded document was read successfully (a document can be edited;
     # this checks the mailbox is real and reachable).
     email_confirmed = models.BooleanField(default=False)
+    email_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     # Auto-extracted from document
     ocr_student_number = models.CharField(max_length=20, null=True, blank=True)

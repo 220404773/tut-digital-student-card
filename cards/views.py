@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django_ratelimit.decorators import ratelimit
 from django.http import FileResponse, HttpResponse, JsonResponse
-from django.db.models import Avg, Max, Min, Count, Q
+from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from datetime import timedelta
 from accounts.models import StudentUser
@@ -220,6 +220,29 @@ def performance_dashboard(request):
     else:
         signup_stats['verification_rate'] = 0
     
+    # Email confirmation metrics
+    confirmation_duration = ExpressionWrapper(
+        F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
+    )
+    email_confirmation_stats = StudentUser.objects.aggregate(
+        total_students=Count('id'),
+        confirmed_count=Count('id', filter=Q(email_confirmed=True)),
+    )
+    confirmation_times = StudentUser.objects.filter(
+        email_confirmed=True, email_confirmed_at__isnull=False
+    ).annotate(confirmation_duration=confirmation_duration).aggregate(
+        avg_confirmation_time=Avg('confirmation_duration'),
+        min_confirmation_time=Min('confirmation_duration'),
+        max_confirmation_time=Max('confirmation_duration'),
+    )
+    email_confirmation_stats.update(confirmation_times)
+    if email_confirmation_stats['total_students'] > 0:
+        email_confirmation_stats['confirmation_rate'] = (
+            email_confirmation_stats['confirmed_count'] / email_confirmation_stats['total_students']
+        ) * 100
+    else:
+        email_confirmation_stats['confirmation_rate'] = 0
+
     # OCR metrics
     ocr_stats = OCRMetrics.objects.aggregate(
         total_ocr=Count('id'),
@@ -262,6 +285,7 @@ def performance_dashboard(request):
 
     context = {
         'signup_stats': signup_stats,
+        'email_confirmation_stats': email_confirmation_stats,
         'ocr_stats': ocr_stats,
         'card_stats': card_stats,
         'total_visits': total_visits,
@@ -289,6 +313,31 @@ def report_cards(request):
     return render(request, 'cards/report_cards.html', {
         'title': title,
         'cards': cards.order_by('expiry_date'),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_email_confirmation(request):
+    """Drill-down behind the Email Confirmation tiles - who's confirmed,
+    who isn't, and how long confirmed accounts took."""
+    filter_type = request.GET.get('filter', 'all')
+    confirmation_duration = ExpressionWrapper(
+        F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
+    )
+    students = StudentUser.objects.annotate(confirmation_duration=confirmation_duration)
+
+    if filter_type == 'confirmed':
+        title = 'Email Confirmed'
+        students = students.filter(email_confirmed=True)
+    elif filter_type == 'unconfirmed':
+        title = 'Email Not Yet Confirmed'
+        students = students.filter(email_confirmed=False)
+    else:
+        title = 'All Students - Email Confirmation Status'
+
+    return render(request, 'cards/report_email_confirmation.html', {
+        'title': title,
+        'students': students.order_by('-date_joined'),
     })
 
 

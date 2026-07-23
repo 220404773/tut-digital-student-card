@@ -330,6 +330,7 @@ def confirm_email(request, uidb64, token):
     if request.method == 'POST':
         if token_valid:
             user.email_confirmed = True
+            user.email_confirmed_at = timezone.now()
             user.save()
             messages.success(request, 'Your email address has been confirmed!')
         else:
