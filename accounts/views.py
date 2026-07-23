@@ -275,9 +275,10 @@ def signup(request):
 
             try:
                 send_confirmation_email(user, request)
+                print(f"Confirmation email accepted by mail server for {user.email}")
                 messages.info(request, 'Please check your email to confirm your address.')
             except Exception as e:
-                print(f"Error sending confirmation email: {str(e)}")
+                print(f"Error sending confirmation email to {user.email}: {str(e)}")
 
             return redirect('dashboard')
         else:
@@ -350,8 +351,10 @@ def resend_confirmation_email(request):
         if not request.user.email_confirmed:
             try:
                 send_confirmation_email(request.user, request)
+                print(f"Confirmation email accepted by mail server for {request.user.email}")
                 messages.success(request, 'Confirmation email sent - please check your inbox.')
             except Exception as e:
+                print(f"Error sending confirmation email to {request.user.email}: {str(e)}")
                 messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
     elif getattr(request, 'limited', False):
         messages.error(request, 'Too many resend attempts - please wait a while and try again.')
