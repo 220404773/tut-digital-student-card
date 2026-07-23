@@ -1,5 +1,9 @@
 FROM python:3.12-slim
 
+# Otherwise print()-based error logging (used throughout the OCR pipeline)
+# sits in stdout's block buffer and never reaches `doctl apps logs`.
+ENV PYTHONUNBUFFERED=1
+
 # Tesseract for OCR, libgl1/libglib2.0-0 for OpenCV (deskew/binarize
 # preprocessing), build-essential/libpq-dev so psycopg2-binary can build
 # from source if no prebuilt wheel matches this image (it doesn't always
