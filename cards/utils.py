@@ -264,9 +264,9 @@ def process_registration_proof(file):
                 'student_number': None,
                 'full_name': None,
                 'confidence_score': 0.5,
-                'document_type': 'TUT Proof of Registration (OCR unavailable)',
+                'document_type': 'Document (text extraction unavailable)',
                 'document_classification_confidence': 0.5,
-                'document_classification_reason': 'PDF uploaded successfully. OCR not available - please enter details manually.'
+                'document_classification_reason': 'Document uploaded successfully, but no readable text could be extracted. Please enter your details manually.'
             }
 
         # One LLM call handles both classification and field extraction, so
