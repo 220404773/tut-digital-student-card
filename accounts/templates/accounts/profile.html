@@ -10,59 +10,71 @@
     </div>
 </div>
 
-<div class="container my-5">
+<div class="container py-3">
     <div class="row">
-        <div class="col-lg-6 mx-auto">
+        <div class="col-lg-8 col-xl-7 mx-auto">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header py-2">
                     <h5 class="mb-0"><i class="fas fa-user-circle"></i> Profile Information</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body py-3">
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
 
-                        <div class="form-group mb-3 text-center">
+                        <div class="d-flex align-items-center gap-3 mb-2">
                             {% if user.profile_picture %}
                                 <img src="{{ user.profile_picture.url }}" alt="Profile photo"
-                                     class="rounded-circle mb-2" style="width: 96px; height: 96px; object-fit: cover;">
+                                     class="rounded-circle" style="width: 64px; height: 64px; object-fit: cover;">
                             {% else %}
-                                <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-2"
-                                     style="width: 96px; height: 96px;">
-                                    <i class="fas fa-user text-muted" style="font-size: 2.25rem;"></i>
+                                <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center"
+                                     style="width: 64px; height: 64px;">
+                                    <i class="fas fa-user text-muted" style="font-size: 1.5rem;"></i>
                                 </div>
                             {% endif %}
-                            <label for="id_profile_picture" class="form-label d-block">Profile Picture</label>
-                            <input type="file" class="form-control" id="id_profile_picture" name="profile_picture" accept=".jpg,.jpeg,.png">
+                            <div class="flex-grow-1">
+                                <label for="id_profile_picture" class="form-label mb-1">Profile Picture</label>
+                                <input type="file" class="form-control form-control-sm" id="id_profile_picture" name="profile_picture" accept=".jpg,.jpeg,.png">
+                            </div>
                         </div>
 
-                        <div class="form-group mb-3">
-                            <label for="id_email" class="form-label">Email</label>
+                        <div class="form-group mb-2">
+                            <label for="id_email" class="form-label mb-1">Email</label>
                             <input type="email" class="form-control" id="id_email" value="{{ user.email }}" disabled>
                             <small class="text-muted">Email cannot be changed</small>
                         </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="id_first_name" class="form-label">First Name</label>
-                            <input type="text" class="form-control" id="id_first_name" name="first_name" value="{{ form.first_name.value }}">
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label for="id_first_name" class="form-label mb-1">First Name</label>
+                                    <input type="text" class="form-control" id="id_first_name" name="first_name" value="{{ form.first_name.value }}">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label for="id_last_name" class="form-label mb-1">Last Name</label>
+                                    <input type="text" class="form-control" id="id_last_name" name="last_name" value="{{ form.last_name.value }}">
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="id_last_name" class="form-label">Last Name</label>
-                            <input type="text" class="form-control" id="id_last_name" name="last_name" value="{{ form.last_name.value }}">
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label for="id_phone" class="form-label mb-1">Phone Number</label>
+                                    <input type="text" class="form-control" id="id_phone" name="phone" value="{{ form.phone.value|default:'' }}">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-2">
+                                    <label for="id_date_of_birth" class="form-label mb-1">Date of Birth</label>
+                                    <input type="date" class="form-control" id="id_date_of_birth" name="date_of_birth" value="{{ form.date_of_birth.value|default:'' }}">
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="id_phone" class="form-label">Phone Number</label>
-                            <input type="text" class="form-control" id="id_phone" name="phone" value="{{ form.phone.value|default:'' }}">
-                        </div>
-                        
-                        <div class="form-group mb-3">
-                            <label for="id_date_of_birth" class="form-label">Date of Birth</label>
-                            <input type="date" class="form-control" id="id_date_of_birth" name="date_of_birth" value="{{ form.date_of_birth.value|default:'' }}">
-                        </div>
-                        
-                        <div class="form-group mb-4">
-                            <label for="id_gender" class="form-label">Gender</label>
+
+                        <div class="form-group mb-2">
+                            <label for="id_gender" class="form-label mb-1">Gender</label>
                             <select class="form-select" id="id_gender" name="gender">
                                 <option value="">Select...</option>
                                 <option value="M" {% if form.gender.value == 'M' %}selected{% endif %}>Male</option>
@@ -70,23 +82,31 @@
                                 <option value="O" {% if form.gender.value == 'O' %}selected{% endif %}>Other</option>
                             </select>
                         </div>
-                        
-                        <button type="submit" class="btn btn-primary w-100 mb-2">
-                            <i class="fas fa-save"></i> Save Changes
-                        </button>
-                        <button type="button" class="btn btn-outline-primary w-100 mb-2"
-                                data-bs-toggle="modal" data-bs-target="#changePasswordModal">
-                            <i class="fas fa-key"></i> Change Password
-                        </button>
-                        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary w-100">
-                            <i class="fas fa-arrow-left"></i> Back to Dashboard
-                        </a>
+
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="fas fa-save"></i> Save Changes
+                                </button>
+                            </div>
+                            <div class="col-md-4">
+                                <button type="button" class="btn btn-outline-primary w-100"
+                                        data-bs-toggle="modal" data-bs-target="#changePasswordModal">
+                                    <i class="fas fa-key"></i> Change Password
+                                </button>
+                            </div>
+                            <div class="col-md-4">
+                                <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary w-100">
+                                    <i class="fas fa-arrow-left"></i> Back to Dashboard
+                                </a>
+                            </div>
+                        </div>
                     </form>
-                    
-                    <hr class="my-4">
-                    
-                    <h6>Account Status</h6>
-                    <p class="mb-2">
+
+                    <hr class="my-3">
+
+                    <h6 class="mb-2">Account Status</h6>
+                    <p class="mb-1">
                         <strong>Verification Status:</strong>
                         {% if user.is_verified %}
                             <span class="badge bg-success">Verified</span>
@@ -94,7 +114,7 @@
                             <span class="badge bg-warning">Pending</span>
                         {% endif %}
                     </p>
-                    <p class="mb-2">
+                    <p class="mb-1">
                         <strong>Email Confirmed:</strong>
                         {% if user.email_confirmed %}
                             <span class="badge bg-success">Confirmed</span>
@@ -108,7 +128,7 @@
                     </p>
 
                     {% if student_card %}
-                        <p class="mb-2">
+                        <p class="mb-1">
                             <strong>Card Status:</strong>
                             <span class="badge bg-info">{{ student_card.status|upper }}</span>
                         </p>
