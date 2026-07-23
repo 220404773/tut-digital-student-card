@@ -13,55 +13,60 @@
 <div class="container my-5">
     <div class="row">
         <div class="col-lg-6 mx-auto">
-            <div class="card mb-4">
-                <div class="card-header bg-success text-white">
-                    <h5 class="mb-0"><i class="fas fa-check-circle"></i> Card Valid</h5>
-                </div>
-                <div class="card-body">
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <small class="text-muted">Card Number</small>
-                            <p class="h6 mb-0">{{ card_data.card_number }}</p>
+            <div class="student-card mb-4">
+                <div class="student-card-content">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <small style="opacity: 0.9;">TSHWANE UNIVERSITY OF TECHNOLOGY</small>
+                            <h4 class="mb-0" style="font-weight: bold;">Digital Student ID</h4>
                         </div>
-                        <div class="col-6">
-                            <small class="text-muted">Status</small>
-                            <p class="h6 mb-0">
-                                <span class="badge bg-success">{{ card_data.status|upper }}</span>
-                            </p>
+                        <div class="text-end">
+                            <span class="badge {% if card_data.is_valid %}bg-light text-dark{% else %}bg-danger{% endif %}">{{ card_data.status|upper }}</span>
                         </div>
                     </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <small class="text-muted">Student Number</small>
+
+                    <hr style="border-color: rgba(255,255,255,0.3); margin: 0.5rem 0;">
+
+                    <div class="d-flex align-items-center gap-3 mb-2">
+                        {% if card_data.profile_picture_url %}
+                            <img src="{{ card_data.profile_picture_url }}" alt="Student photo"
+                                 class="rounded-circle" style="width: 56px; height: 56px; object-fit: cover; border: 2px solid rgba(255,255,255,0.6);">
+                        {% else %}
+                            <div class="rounded-circle d-flex align-items-center justify-content-center"
+                                 style="width: 56px; height: 56px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.6);">
+                                <i class="fas fa-user" style="font-size: 1.5rem; opacity: 0.85;"></i>
+                            </div>
+                        {% endif %}
+                        <div>
+                            <h4 class="mb-1" style="font-weight: bold;">{{ card_data.full_name }}</h4>
                             <p class="h6 mb-0">{{ card_data.student_number }}</p>
                         </div>
+                    </div>
+
+                    <div class="row mb-2">
                         <div class="col-6">
-                            <small class="text-muted">Full Name</small>
-                            <p class="h6 mb-0">{{ card_data.full_name }}</p>
+                            <small style="opacity: 0.9;">Card Number</small>
+                            <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.card_number }}</p>
+                        </div>
+                        <div class="col-6 text-end">
+                            <small style="opacity: 0.9;">Valid Until</small>
+                            <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.expiry_date }}</p>
                         </div>
                     </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-6">
-                            <small class="text-muted">Issued</small>
-                            <p class="h6 mb-0">{{ card_data.issue_date }}</p>
+
+                    <div class="d-flex gap-3 mt-2">
+                        <div>
+                            <small style="opacity: 0.9;">Issued</small>
+                            <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.issue_date }}</p>
                         </div>
-                        <div class="col-6">
-                            <small class="text-muted">Expires</small>
-                            <p class="h6 mb-0">{{ card_data.expiry_date }}</p>
-                        </div>
-                    </div>
-                    
-                    <div class="row">
-                        <div class="col-12">
-                            <small class="text-muted">Email</small>
-                            <p class="h6 mb-0">{{ card_data.email }}</p>
+                        <div>
+                            <small style="opacity: 0.9;">Email</small>
+                            <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.email }}</p>
                         </div>
                     </div>
                 </div>
             </div>
-            
+
             {% if card_data.qr_code_url %}
                 <div class="text-center mb-4">
                     <img src="{{ card_data.qr_code_url }}" alt="QR Code" class="img-fluid" style="max-width: 200px;">
