@@ -168,6 +168,62 @@ class AdminVerificationCardGenerationTests(TestCase):
         self.assertTrue(StudentCard.objects.filter(user=new_student).exists())
 
 
+class StaffAdminPlaceholderStudentNumberTests(TestCase):
+    """Staff+superuser accounts aren't real students - they get a unique
+    STAFF-ADMIN-N placeholder instead of requiring a real student number,
+    since student_number is unique and can't just be "STAFF-ADMIN" for
+    every admin."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from accounts.admin import StudentUserAdmin
+
+        self.model_admin = StudentUserAdmin(StudentUser, AdminSite())
+        factory = RequestFactory()
+        self.request = factory.get('/admin/')
+
+    def _make_admin_candidate(self, email, student_number='placeholder'):
+        user = StudentUser(
+            email=email, student_number=student_number,
+            first_name='New', last_name='Admin', username=email,
+            is_staff=True, is_superuser=True,
+        )
+        user.set_password('TestPass123!')
+        return user
+
+    def test_first_staff_superuser_gets_staff_admin_1(self):
+        user = self._make_admin_candidate('admin-a@tut4life.ac.za')
+        self.model_admin.save_model(self.request, user, form=None, change=False)
+        self.assertEqual(user.student_number, 'STAFF-ADMIN-1')
+
+    def test_second_staff_superuser_gets_a_different_number(self):
+        first = self._make_admin_candidate('admin-b@tut4life.ac.za')
+        self.model_admin.save_model(self.request, first, form=None, change=False)
+
+        second = self._make_admin_candidate('admin-c@tut4life.ac.za')
+        self.model_admin.save_model(self.request, second, form=None, change=False)
+
+        self.assertNotEqual(first.student_number, second.student_number)
+        self.assertTrue(second.student_number.startswith('STAFF-ADMIN-'))
+
+    def test_non_staff_student_keeps_its_real_student_number(self):
+        user = StudentUser(
+            email='realstudent@tut4life.ac.za', student_number='123123123',
+            first_name='Real', last_name='Student', username='realstudent@tut4life.ac.za',
+        )
+        user.set_password('TestPass123!')
+        self.model_admin.save_model(self.request, user, form=None, change=False)
+        self.assertEqual(user.student_number, '123123123')
+
+    def test_already_assigned_placeholder_is_not_reassigned(self):
+        user = self._make_admin_candidate('admin-d@tut4life.ac.za')
+        self.model_admin.save_model(self.request, user, form=None, change=False)
+        first_assigned = user.student_number
+
+        self.model_admin.save_model(self.request, user, form=None, change=True)
+        self.assertEqual(user.student_number, first_assigned)
+
+
 class StudentCardAdminTests(TestCase):
     """Manually adding a StudentCard directly in admin should auto-generate
     a unique card_number and QR code, the same way issue_date auto-

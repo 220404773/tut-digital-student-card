@@ -1,9 +1,13 @@
+import re
+
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
 from cards.models import StudentCard
 from cards.utils import generate_student_card
 from .models import StudentUser
+
+STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
 
 
 class StudentUserAdmin(UserAdmin):
@@ -22,6 +26,25 @@ class StudentUserAdmin(UserAdmin):
     )
 
     def save_model(self, request, obj, form, change):
+        # Staff+superuser accounts aren't real students - give them a
+        # placeholder student_number instead of requiring a real one.
+        # student_number is unique, so each admin gets its own numbered
+        # placeholder (STAFF-ADMIN-1, -2, ...) rather than colliding on a
+        # single shared value. Only assigns a new one if not already using
+        # this placeholder scheme, so it doesn't reassign on every save.
+        if obj.is_staff and obj.is_superuser and not STAFF_ADMIN_NUMBER_RE.match(obj.student_number or ''):
+            used_numbers = set()
+            for number in StudentUser.objects.filter(
+                student_number__startswith='STAFF-ADMIN-'
+            ).exclude(pk=obj.pk).values_list('student_number', flat=True):
+                match = STAFF_ADMIN_NUMBER_RE.match(number)
+                if match:
+                    used_numbers.add(int(match.group(1)))
+            next_number = 1
+            while next_number in used_numbers:
+                next_number += 1
+            obj.student_number = f'STAFF-ADMIN-{next_number}'
+
         super().save_model(request, obj, form, change)
 
         # Ticking "is_verified" here is a manual/soft approval - equivalent
