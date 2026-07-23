@@ -24,6 +24,8 @@
                             </div>
                         {% endif %}
 
+                        <input type="hidden" name="upload_start_time" id="id_upload_start_time">
+
                         <div class="form-group mb-2">
                             <label for="id_registration_proof" class="form-label mb-1">Upload Proof of Registration *</label>
                             <input type="file" class="form-control" id="id_registration_proof" name="registration_proof" accept=".pdf,.jpg,.jpeg,.png" data-preview-url="{% url 'preview_registration_proof' %}" required>

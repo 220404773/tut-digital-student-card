@@ -30,6 +30,14 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        // Marks the real start of "signup time" for the admin metrics - a
+        // page refresh wipes this hidden field along with everything else,
+        // so an abandoned attempt is never counted.
+        const uploadStartField = document.getElementById('id_upload_start_time');
+        if (uploadStartField) {
+            uploadStartField.value = Date.now();
+        }
+
         if (!previewUrl) {
             return;
         }

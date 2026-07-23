@@ -158,7 +158,21 @@ def signup(request):
         return render(request, 'accounts/signup.html', {'form': CustomUserCreationForm()})
 
     if request.method == 'POST':
+        # Defaults to request-received time; overridden below with the
+        # moment the student actually picked a file, if the browser sent
+        # one - measures real end-to-end signup time instead of just this
+        # request's backend processing time. A page refresh loses the JS
+        # variable backing that hidden field, so an abandoned attempt is
+        # never counted.
         signup_start_time = timezone.now()
+        upload_start_raw = request.POST.get('upload_start_time')
+        if upload_start_raw:
+            try:
+                from datetime import datetime as dt, timezone as dt_timezone
+                signup_start_time = dt.fromtimestamp(int(upload_start_raw) / 1000, tz=dt_timezone.utc)
+            except (ValueError, TypeError, OSError):
+                pass
+
         form = CustomUserCreationForm(request.POST, request.FILES)
         
         if form.is_valid():

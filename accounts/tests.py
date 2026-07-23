@@ -45,6 +45,54 @@ class SignupUsernameTests(TestCase):
         self.assertEqual(StudentUser.objects.count(), 2)
 
 
+class SignupDurationTests(TestCase):
+    """signup_duration_seconds should measure from when the student picked
+    a file (client-reported timestamp), not just this request's backend
+    processing time."""
+
+    def test_uses_client_reported_upload_start_time(self):
+        import time
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from cards.models import SignupMetrics
+
+        proof = SimpleUploadedFile('proof.pdf', b'%PDF-1.4\n%minimal placeholder pdf content', content_type='application/pdf')
+        upload_start_ms = int(time.time() * 1000) - 15000  # 15s before this request
+
+        self.client.post(reverse('signup'), {
+            'email': 'timed@tut4life.ac.za',
+            'first_name': 'Timed',
+            'last_name': 'Student',
+            'student_number': '999888777',
+            'phone': '',
+            'upload_start_time': upload_start_ms,
+            'registration_proof': proof,
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+        })
+
+        metrics = SignupMetrics.objects.get(user__student_number='999888777')
+        self.assertGreaterEqual(metrics.signup_duration_seconds, 15)
+
+    def test_missing_upload_start_time_falls_back_to_request_time(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from cards.models import SignupMetrics
+
+        proof = SimpleUploadedFile('proof.pdf', b'%PDF-1.4\n%minimal placeholder pdf content', content_type='application/pdf')
+        self.client.post(reverse('signup'), {
+            'email': 'notiming@tut4life.ac.za',
+            'first_name': 'No',
+            'last_name': 'Timing',
+            'student_number': '555444333',
+            'phone': '',
+            'registration_proof': proof,
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+        })
+
+        metrics = SignupMetrics.objects.get(user__student_number='555444333')
+        self.assertLess(metrics.signup_duration_seconds, 5)
+
+
 class DuplicateAccountRedirectTests(TestCase):
     """Signing up with an email/student number that already exists should
     redirect to login (with the email prefilled) instead of re-showing a
