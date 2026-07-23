@@ -27,4 +27,7 @@ COPY . .
 RUN python manage.py collectstatic --noinput
 
 EXPOSE 8080
-CMD ["gunicorn", "tut_student_card.wsgi", "--bind=0.0.0.0:8080"]
+# Default gunicorn worker timeout (30s) was killing requests mid-OCR - image
+# preprocessing (OpenCV) + Tesseract + the NVIDIA LLM call routinely take
+# longer than that on this instance size.
+CMD ["gunicorn", "tut_student_card.wsgi", "--bind=0.0.0.0:8080", "--timeout=120"]

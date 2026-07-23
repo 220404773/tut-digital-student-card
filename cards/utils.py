@@ -178,16 +178,24 @@ def preprocess_for_ocr(pil_image):
 
 
 def ocr_image_with_confidence(pil_image):
-    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100)."""
+    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100).
+
+    Runs Tesseract once (image_to_data) rather than twice (image_to_string
+    + image_to_data on the same image) - the second full OCR pass was
+    redundant since the same text can be reconstructed from image_to_data's
+    per-word output, and this OCR call is the single biggest contributor to
+    the request time that was hitting gunicorn's worker timeout.
+    """
     configure_tesseract()
     processed = preprocess_for_ocr(pil_image)
 
-    text = pytesseract.image_to_string(processed, config='--psm 6')
     data = pytesseract.image_to_data(processed, output_type=pytesseract.Output.DICT, config='--psm 6')
 
     total_confidence = 0
     word_count = 0
-    for conf_value in data['conf']:
+    lines = {}
+    for i, word in enumerate(data['text']):
+        conf_value = data['conf'][i]
         try:
             conf = int(float(conf_value))
         except (TypeError, ValueError):
@@ -195,7 +203,11 @@ def ocr_image_with_confidence(pil_image):
         if conf > -1:
             total_confidence += conf
             word_count += 1
+        if word.strip():
+            line_key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+            lines.setdefault(line_key, []).append(word)
 
+    text = '\n'.join(' '.join(words) for words in lines.values())
     avg_confidence = (total_confidence / word_count) if word_count else 0.0
     return text, round(avg_confidence, 2)
 
