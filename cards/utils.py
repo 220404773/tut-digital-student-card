@@ -611,6 +611,40 @@ def link_recent_anonymous_visits(user, request, within_minutes=60):
     ).update(user=user)
 
 
+def generate_unique_card_number(user):
+    return f"TUT{user.id}{uuid.uuid4().hex[:8].upper()}"
+
+
+def generate_qr_code_for_card(student_card, request=None):
+    """Generate and save the verification QR code for a card that already
+    has a card_number - shared by generate_student_card() and by
+    StudentCardAdmin for manually-added cards, so both paths produce the
+    same kind of QR code.
+    """
+    from django.core.files.base import ContentFile
+
+    qr_data = build_card_verification_url(student_card.card_number, request)
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(qr_data)
+    qr.make(fit=True)
+    qr_image = qr.make_image(fill_color="black", back_color="white")
+
+    # Save QR code through the FileField's own storage API (not a raw
+    # MEDIA_ROOT path) so this lands in the configured backend - local
+    # disk in dev, but S3/Spaces in production, where a container-local
+    # file would never actually be reachable at the saved URL.
+    qr_filename = f"qr_{student_card.card_number}.png"
+    buffer = io.BytesIO()
+    qr_image.save(buffer, format='PNG')
+    student_card.qr_code.save(qr_filename, ContentFile(buffer.getvalue()), save=False)
+    student_card.save()
+
+
 def generate_student_card(user, request=None):
     """
     Generate a digital student card for a verified user.
@@ -623,9 +657,6 @@ def generate_student_card(user, request=None):
         # Check if card already exists
         student_card = StudentCard.objects.filter(user=user).first()
         if not student_card:
-            # Generate unique card number
-            card_number = f"TUT{user.id}{uuid.uuid4().hex[:8].upper()}"
-
             # Card expiry follows the student's registration period when the
             # proof of registration gave us one; otherwise default to 1 year.
             expiry_date = user.registration_end_date or (datetime.now().date() + timedelta(days=365))
@@ -633,44 +664,21 @@ def generate_student_card(user, request=None):
             # Create card record
             student_card = StudentCard.objects.create(
                 user=user,
-                card_number=card_number,
+                card_number=generate_unique_card_number(user),
                 expiry_date=expiry_date,
                 status='active'
             )
 
-            # Generate QR code
-            qr_data = build_card_verification_url(card_number, request)
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,
-                border=4,
-            )
-            qr.add_data(qr_data)
-            qr.make(fit=True)
-            
-            # Create image from QR code
-            qr_image = qr.make_image(fill_color="black", back_color="white")
-            
-            # Save QR code through the FileField's own storage API (not a raw
-            # MEDIA_ROOT path) so this lands in the configured backend - local
-            # disk in dev, but S3/Spaces in production, where a container-local
-            # file would never actually be reachable at the saved URL.
-            from django.core.files.base import ContentFile
-            qr_filename = f"qr_{card_number}.png"
-            buffer = io.BytesIO()
-            qr_image.save(buffer, format='PNG')
-            student_card.qr_code.save(qr_filename, ContentFile(buffer.getvalue()), save=False)
-            student_card.save()
-            
+            generate_qr_code_for_card(student_card, request)
+
             # Log activity
             CardActivity.objects.create(
                 student_card=student_card,
                 activity_type='generated'
             )
-        
+
         return student_card
-    
+
     except Exception as e:
         print(f"Error generating student card: {str(e)}")
         raise

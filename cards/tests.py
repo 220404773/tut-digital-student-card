@@ -155,11 +155,51 @@ class AdminVerificationCardGenerationTests(TestCase):
         self.model_admin.save_model(self.request, self.student, form=None, change=True)
         self.assertFalse(StudentCard.objects.filter(user=self.student).exists())
 
-    def test_already_verified_with_existing_card_does_not_duplicate(self):
-        self.student.is_verified = True
-        self.model_admin.save_model(self.request, self.student, form=None, change=True)
-        self.model_admin.save_model(self.request, self.student, form=None, change=True)
-        self.assertEqual(StudentCard.objects.filter(user=self.student).count(), 1)
+    def test_new_student_added_pre_verified_gets_a_card(self):
+        """change=False (the admin Add form) must generate a card too, not
+        just change=True (editing an existing student)."""
+        new_student = StudentUser(
+            email='newlyadded@tut4life.ac.za', student_number='777666555',
+            first_name='New', last_name='Student', username='newlyadded@tut4life.ac.za',
+            is_verified=True,
+        )
+        new_student.set_password('TestPass123!')
+        self.model_admin.save_model(self.request, new_student, form=None, change=False)
+        self.assertTrue(StudentCard.objects.filter(user=new_student).exists())
+
+
+class StudentCardAdminTests(TestCase):
+    """Manually adding a StudentCard directly in admin should auto-generate
+    a unique card_number and QR code, the same way issue_date auto-
+    populates - these aren't meant to be typed in by hand."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from cards.admin import StudentCardAdmin
+
+        self.staff = make_user(email='admin3@tut4life.ac.za', student_number='staffnum3', is_staff=True, is_superuser=True)
+        self.student = make_user(email='cardless@tut4life.ac.za', student_number='444555666')
+        self.model_admin = StudentCardAdmin(StudentCard, AdminSite())
+
+        factory = RequestFactory()
+        self.request = factory.get('/admin/')
+        self.request.user = self.staff
+
+    def test_manually_added_card_gets_number_and_qr_code(self):
+        card = StudentCard(user=self.student)
+        self.model_admin.save_model(self.request, card, form=None, change=False)
+
+        card.refresh_from_db()
+        self.assertTrue(card.card_number)
+        self.assertTrue(card.qr_code)
+
+    def test_manually_provided_expiry_date_is_not_overridden(self):
+        custom_expiry = date(2099, 1, 1)
+        card = StudentCard(user=self.student, expiry_date=custom_expiry)
+        self.model_admin.save_model(self.request, card, form=None, change=False)
+
+        card.refresh_from_db()
+        self.assertEqual(card.expiry_date, custom_expiry)
 
 
 class PermissionBoundaryTests(TestCase):
