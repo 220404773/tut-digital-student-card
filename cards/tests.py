@@ -125,6 +125,43 @@ class CardExpiryTests(TestCase):
         self.assertEqual(card.expiry_date, expected)
 
 
+class AdminVerificationCardGenerationTests(TestCase):
+    """Manually checking is_verified in the Django admin is a soft approval
+    - it should generate the student's card the same way OCR
+    auto-verification does in signup()."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.contrib.messages.middleware import MessageMiddleware
+        from django.contrib.sessions.middleware import SessionMiddleware
+        from accounts.admin import StudentUserAdmin
+
+        self.staff = make_user(email='admin2@tut4life.ac.za', student_number='staffnum2', is_staff=True, is_superuser=True)
+        self.student = make_user(email='pending@tut4life.ac.za', student_number='888777666')
+        self.model_admin = StudentUserAdmin(StudentUser, AdminSite())
+
+        factory = RequestFactory()
+        self.request = factory.get('/admin/')
+        self.request.user = self.staff
+        SessionMiddleware(lambda r: None).process_request(self.request)
+        MessageMiddleware(lambda r: None).process_request(self.request)
+
+    def test_checking_is_verified_generates_card(self):
+        self.student.is_verified = True
+        self.model_admin.save_model(self.request, self.student, form=None, change=True)
+        self.assertTrue(StudentCard.objects.filter(user=self.student).exists())
+
+    def test_unverified_does_not_generate_card(self):
+        self.model_admin.save_model(self.request, self.student, form=None, change=True)
+        self.assertFalse(StudentCard.objects.filter(user=self.student).exists())
+
+    def test_already_verified_with_existing_card_does_not_duplicate(self):
+        self.student.is_verified = True
+        self.model_admin.save_model(self.request, self.student, form=None, change=True)
+        self.model_admin.save_model(self.request, self.student, form=None, change=True)
+        self.assertEqual(StudentCard.objects.filter(user=self.student).count(), 1)
+
+
 class PermissionBoundaryTests(TestCase):
     """Staff/admin accounts should never land on student-only pages, and
     students should never reach staff-only reporting pages."""
