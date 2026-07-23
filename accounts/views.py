@@ -308,6 +308,34 @@ def signup(request):
     return render(request, 'accounts/signup.html', {'form': form})
 
 
+def password_reset_view(request):
+    """Wraps Django's built-in PasswordResetView to redirect to signup after
+    two failed attempts with an email that isn't registered.
+
+    Note: this deliberately trades away the usual protection against email
+    enumeration (a generic "if an account exists..." message regardless of
+    whether it does) for a friendlier UX, per explicit product decision.
+    """
+    from accounts.urls import rate_limited_password_reset_view
+
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip()
+        exists = bool(email) and StudentUser.objects.filter(email__iexact=email, is_active=True).exists()
+
+        if exists:
+            request.session['password_reset_failed_attempts'] = 0
+        else:
+            attempts = request.session.get('password_reset_failed_attempts', 0) + 1
+            request.session['password_reset_failed_attempts'] = attempts
+
+            if attempts >= 2:
+                request.session['password_reset_failed_attempts'] = 0
+                messages.info(request, "We couldn't find an account with that email. Please sign up instead.")
+                return redirect('signup')
+
+    return rate_limited_password_reset_view(request)
+
+
 def confirm_email(request, uidb64, token):
     """Landing page for the link sent by send_confirmation_email.
 

@@ -143,6 +143,23 @@ class PasswordResetTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('BrandNewPass456!'))
 
+    def test_first_unregistered_attempt_shows_generic_message(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'nobody@tut4life.ac.za'}, follow=True)
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_second_unregistered_attempt_redirects_to_signup(self):
+        self.client.post(reverse('password_reset'), {'email': 'nobody@tut4life.ac.za'})
+        response = self.client.post(reverse('password_reset'), {'email': 'nobody@tut4life.ac.za'}, follow=True)
+        self.assertRedirects(response, reverse('signup'))
+
+    def test_registered_email_resets_the_failed_attempt_counter(self):
+        self.client.post(reverse('password_reset'), {'email': 'nobody@tut4life.ac.za'})
+        self.client.post(reverse('password_reset'), {'email': self.user.email})
+
+        response = self.client.post(reverse('password_reset'), {'email': 'nobody@tut4life.ac.za'}, follow=True)
+        self.assertRedirects(response, reverse('password_reset_done'))
+
 
 class ChangePasswordTests(TestCase):
     def setUp(self):
