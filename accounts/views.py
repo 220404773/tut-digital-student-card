@@ -308,23 +308,37 @@ def signup(request):
 
 
 def confirm_email(request, uidb64, token):
-    """Landing page for the link sent by send_confirmation_email."""
+    """Landing page for the link sent by send_confirmation_email.
+
+    Confirms only on POST (the visible "Confirm my email" button), not on
+    the initial GET - many institutional mail systems (Microsoft Safe
+    Links, Google Workspace, corporate security gateways) automatically
+    pre-fetch links inside incoming emails to scan them for malware before
+    the recipient ever opens the message. If a bare page visit confirmed
+    the email, that automated scan would silently consume the one-time
+    token itself.
+    """
     try:
         uid = urlsafe_base64_decode(uidb64).decode()
         user = StudentUser.objects.get(pk=uid)
     except (TypeError, ValueError, OverflowError, StudentUser.DoesNotExist):
         user = None
 
-    if user is not None and email_confirmation_token.check_token(user, token):
-        user.email_confirmed = True
-        user.save()
-        messages.success(request, 'Your email address has been confirmed!')
-    else:
-        messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your dashboard.')
+    token_valid = user is not None and email_confirmation_token.check_token(user, token)
 
-    if request.user.is_authenticated:
-        return post_login_redirect(request.user)
-    return redirect('login')
+    if request.method == 'POST':
+        if token_valid:
+            user.email_confirmed = True
+            user.save()
+            messages.success(request, 'Your email address has been confirmed!')
+        else:
+            messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your dashboard.')
+
+        if request.user.is_authenticated:
+            return post_login_redirect(request.user)
+        return redirect('login')
+
+    return render(request, 'accounts/confirm_email.html', {'token_valid': token_valid})
 
 
 @login_required(login_url='login')

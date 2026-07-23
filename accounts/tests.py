@@ -236,6 +236,22 @@ class EmailConfirmationTests(TestCase):
     def test_new_users_default_to_unconfirmed(self):
         self.assertFalse(self.user.email_confirmed)
 
+    def test_visiting_confirmation_link_does_not_confirm_on_its_own(self):
+        """A bare GET (e.g. an email security scanner pre-fetching the link)
+        must not confirm the email - only the button's POST does."""
+        import re
+        self.client.force_login(self.user)
+        self.client.post(reverse('resend_confirmation'))
+        self.assertEqual(len(mail.outbox), 1)
+
+        match = re.search(r'(/accounts/confirm-email/\S+/)', mail.outbox[0].body)
+        self.assertIsNotNone(match)
+
+        response = self.client.get(match.group(1))
+        self.assertContains(response, 'Confirm My Email')
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.email_confirmed)
+
     def test_valid_confirmation_link_confirms_email(self):
         import re
         self.client.force_login(self.user)
@@ -245,7 +261,7 @@ class EmailConfirmationTests(TestCase):
         match = re.search(r'(/accounts/confirm-email/\S+/)', mail.outbox[0].body)
         self.assertIsNotNone(match)
 
-        self.client.get(match.group(1))
+        self.client.post(match.group(1))
         self.user.refresh_from_db()
         self.assertTrue(self.user.email_confirmed)
 
@@ -253,8 +269,13 @@ class EmailConfirmationTests(TestCase):
         from django.utils.http import urlsafe_base64_encode
         from django.utils.encoding import force_bytes
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
-        response = self.client.get(reverse('confirm_email', args=[uid, 'bogus-token']), follow=True)
-        self.assertContains(response, 'invalid or has expired')
+        url = reverse('confirm_email', args=[uid, 'bogus-token'])
+
+        get_response = self.client.get(url)
+        self.assertContains(get_response, 'invalid or has already been used')
+
+        post_response = self.client.post(url, follow=True)
+        self.assertContains(post_response, 'invalid or has expired')
         self.user.refresh_from_db()
         self.assertFalse(self.user.email_confirmed)
 
