@@ -250,7 +250,6 @@ def performance_dashboard(request):
         min_ocr_time=Min('ocr_duration_seconds'),
         max_ocr_time=Max('ocr_duration_seconds'),
         avg_confidence=Avg('ocr_confidence_score'),
-        avg_document_quality=Avg('document_quality_score'),
         avg_classification_confidence=Avg('document_classification_confidence'),
         accurate_count=Count('id', filter=Q(is_accurate=True)),
         needs_review_count=Count('id', filter=Q(manual_correction_required=True)),
