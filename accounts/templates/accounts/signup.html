@@ -5,72 +5,77 @@
 {% block title %}Sign Up - TUT Digital Student Card{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="container">
-        <h1>Create Your Account</h1>
-        <p class="lead">Register for your digital student card</p>
-    </div>
-</div>
-
-<div class="container my-5">
+<div class="container py-3">
     <div class="row">
-        <div class="col-md-6 mx-auto">
+        <div class="col-lg-8 col-xl-7 mx-auto">
             <div class="card">
-                <div class="card-header">
+                <div class="card-header py-2">
                     <h5 class="mb-0"><i class="fas fa-user-plus"></i> Student Registration</h5>
                 </div>
-                <div class="card-body">
+                <div class="card-body py-3">
                     <form method="post" enctype="multipart/form-data">
                         {% csrf_token %}
-                        
+
                         {% if form.non_field_errors %}
-                            <div class="alert alert-danger">
+                            <div class="alert alert-danger py-2">
                                 {% for error in form.non_field_errors %}
-                                    <p>{{ error }}</p>
+                                    <p class="mb-0">{{ error }}</p>
                                 {% endfor %}
                             </div>
                         {% endif %}
-                        
-                        <h6 class="mb-3">Proof of Registration</h6>
-                        <div class="form-group mb-3">
-                            <label for="id_registration_proof" class="form-label">Upload Proof of Registration *</label>
+
+                        <div class="form-group mb-2">
+                            <label for="id_registration_proof" class="form-label mb-1">Upload Proof of Registration *</label>
                             <input type="file" class="form-control" id="id_registration_proof" name="registration_proof" accept=".pdf,.jpg,.jpeg,.png" data-preview-url="{% url 'preview_registration_proof' %}" required>
                             <small class="form-text text-muted">
-                                <i class="fas fa-info-circle"></i> Upload your proof of registration from the TUT iEnabler portal first.
-                                <br>The student number and name fields will populate automatically after upload.
+                                <i class="fas fa-info-circle"></i> Upload from the TUT iEnabler portal - student number and name populate automatically.
                             </small>
                         </div>
 
-                        <div id="ocr-preview-status" class="alert d-none" role="alert"></div>
+                        <div id="ocr-preview-status" class="alert d-none py-2" role="alert"></div>
 
-                        <h6 class="mb-3 mt-4">Personal Information</h6>
-
-                        {% include 'form_field.html' with field=form.email %}
-                        {% include 'form_field.html' with field=form.first_name %}
-                        {% include 'form_field.html' with field=form.last_name %}
-                        {% include 'form_field.html' with field=form.student_number %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.first_name %}
+                            </div>
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.last_name %}
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.email %}
+                            </div>
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.student_number %}
+                            </div>
+                        </div>
                         {% include 'form_field.html' with field=form.phone %}
-                        
-                        <h6 class="mb-3 mt-4">Password</h6>
-                        
-                        {% include 'form_field.html' with field=form.password1 %}
-                        {% include 'form_field.html' with field=form.password2 %}
-                        
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.password1 %}
+                            </div>
+                            <div class="col-md-6">
+                                {% include 'form_field.html' with field=form.password2 %}
+                            </div>
+                        </div>
+
                         {% if form.password1.help_text %}
-                            <small class="form-text text-muted d-block mb-3">
+                            <small class="form-text text-muted d-block mb-2">
                                 {{ form.password1.help_text|safe }}
                             </small>
                         {% endif %}
-                        
-                        <button type="submit" class="btn btn-primary w-100 mt-4">
+
+                        <button type="submit" class="btn btn-primary w-100 mt-2">
                             <i class="fas fa-user-check"></i> Create Account
                         </button>
                     </form>
-                    
-                    <hr class="my-4">
-                    
+
+                    <hr class="my-3">
+
                     <p class="text-center mb-0">
-                        Already have an account? 
+                        Already have an account?
                         <a href="{% url 'login' %}">Login here</a>
                     </p>
                 </div>
