@@ -157,6 +157,10 @@ EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@tut4life.ac.za')
 
+# Only used when EMAIL_BACKEND is tut_student_card.azure_email_backend.AzureCommunicationEmailBackend
+AZURE_EMAIL_CONNECTION_STRING = config('AZURE_EMAIL_CONNECTION_STRING', default='')
+AZURE_EMAIL_SENDER_ADDRESS = config('AZURE_EMAIL_SENDER_ADDRESS', default='')
+
 # OCR Settings
 OCR_ENABLED = True
 OCR_CONFIDENCE_THRESHOLD = 0.8
