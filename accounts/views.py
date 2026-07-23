@@ -87,7 +87,7 @@ def preview_registration_proof(request):
     try:
         ocr_result = process_registration_proof(registration_proof)
         if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
-            return JsonResponse({'success': False, 'message': 'You have uploaded an invalid PDF.'}, status=400)
+            return JsonResponse({'success': False, 'message': 'This does not look like a valid TUT proof of registration. Please upload the correct document.'}, status=400)
 
         if not ocr_result:
             return JsonResponse({'success': False, 'message': 'No extractable information was found in the uploaded document.'}, status=400)
@@ -169,7 +169,7 @@ def signup(request):
 
                     if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
                         user.is_verified = False
-                        messages.warning(request, 'You have uploaded an invalid PDF.')
+                        messages.warning(request, 'This does not look like a valid TUT proof of registration. Please upload the correct document.')
                         return render(request, 'accounts/signup.html', {'form': form})
                     
                     if ocr_result and ocr_result.get('confidence_score', 0) >= 0.8:

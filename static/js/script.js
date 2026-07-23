@@ -99,6 +99,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
+            // Invalid document (e.g. failed classification) - clear the
+            // file input so it's obvious that file was rejected, not still
+            // queued for submission.
+            fileInput.value = '';
             statusBox.className = 'alert alert-warning';
             statusBox.textContent = data.message || 'We could not extract details from this document. Please type them manually.';
         })
