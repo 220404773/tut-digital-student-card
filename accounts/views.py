@@ -48,6 +48,25 @@ def send_confirmation_email(user, request):
     )
 
 
+def delete_registration_proof(user):
+    """Delete the uploaded proof of registration after processing (POPIA
+    compliance) - goes through the storage backend's own API (not raw
+    os.path/MEDIA_ROOT) so this also works when storage is S3/Spaces-backed,
+    not just local disk. Must be called from every code path that saves a
+    user with a registration_proof attached, not just the final one - a
+    save() partway through signup() already uploads the file, so an early
+    return without this call leaves it sitting in storage indefinitely.
+    """
+    if user.registration_proof:
+        try:
+            if user.registration_proof.storage.exists(user.registration_proof.name):
+                user.registration_proof.storage.delete(user.registration_proof.name)
+            user.registration_proof = None
+            user.save()
+        except Exception as e:
+            print(f"Error deleting proof file: {str(e)}")
+
+
 def split_full_name(full_name):
     """Split an extracted full name into first and last name parts."""
     if not full_name:
@@ -177,6 +196,7 @@ def signup(request):
                             user.is_verified = False
                             messages.warning(request, 'The uploaded file did not contain the required details.')
                             user.save()
+                            delete_registration_proof(user)
                             return render(request, 'accounts/signup.html', {'form': form})
 
                         if not user.email and ocr_result.get('email'):
@@ -203,18 +223,7 @@ def signup(request):
                     messages.warning(request, f'OCR processing error: {str(e)}. Please try again.')
             
             user.save()
-            
-            # Delete the uploaded proof file after processing (POPIA compliance).
-            # Goes through the storage backend's own API (not raw os.path/MEDIA_ROOT)
-            # so this also works when storage is S3/Spaces-backed, not just local disk.
-            if user.registration_proof:
-                try:
-                    if user.registration_proof.storage.exists(user.registration_proof.name):
-                        user.registration_proof.storage.delete(user.registration_proof.name)
-                    user.registration_proof = None
-                    user.save()
-                except Exception as e:
-                    print(f"Error deleting proof file: {str(e)}")
+            delete_registration_proof(user)
             
             # Track signup metrics
             signup_end_time = timezone.now()
