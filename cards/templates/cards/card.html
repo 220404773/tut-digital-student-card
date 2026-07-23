@@ -68,37 +68,19 @@
                 </div>
             </div>
 
-            <!-- QR Code Section -->
-            {% if card_data.qr_code_url %}
-                <div class="card mb-3">
-                    <div class="card-header py-2">
-                        <h6 class="mb-0"><i class="fas fa-qrcode"></i> Verification QR Code</h6>
-                    </div>
-                    <div class="card-body text-center py-2">
-                        <img src="{{ card_data.qr_code_url }}" alt="QR Code" class="img-fluid" style="max-width: 170px;">
-                        <p class="text-muted mt-2 mb-0"><small>Show this code for quick verification at campus gates</small></p>
-                    </div>
-                </div>
-            {% endif %}
-
             <!-- Actions -->
             <div class="row g-2">
-                <div class="col-6">
-                    <a href="{% url 'download_qr' %}" class="btn btn-primary w-100">
-                        <i class="fas fa-download"></i> Download QR
-                    </a>
-                </div>
-                <div class="col-6">
+                <div class="col-4">
                     <a href="{% url 'verify_card' %}" class="btn btn-outline-primary w-100">
                         <i class="fas fa-eye"></i> Verification
                     </a>
                 </div>
-                <div class="col-6">
+                <div class="col-4">
                     <a href="{% url 'card_activity' %}" class="btn btn-outline-primary w-100">
                         <i class="fas fa-history"></i> Activity Log
                     </a>
                 </div>
-                <div class="col-6">
+                <div class="col-4">
                     <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary w-100">
                         <i class="fas fa-arrow-left"></i> Dashboard
                     </a>
