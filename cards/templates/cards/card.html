@@ -68,6 +68,14 @@
                 </div>
             </div>
 
+            {% if google_wallet_save_url %}
+                <div class="d-grid mb-2">
+                    <a href="{{ google_wallet_save_url }}" class="btn w-100" style="background:#000; color:#fff;">
+                        <i class="fas fa-wallet"></i> Add to Google Wallet
+                    </a>
+                </div>
+            {% endif %}
+
             <!-- Actions -->
             <div class="row g-2">
                 <div class="col-4">

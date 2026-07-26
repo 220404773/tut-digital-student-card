@@ -11,6 +11,7 @@ from datetime import timedelta
 from accounts.models import StudentUser
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import get_card_display_data, build_card_verification_url
+from .google_wallet import build_google_wallet_save_url
 import qrcode
 
 
@@ -62,11 +63,13 @@ def view_card(request):
     )
     
     card_data = get_card_display_data(student_card)
-    
+    verification_url = build_card_verification_url(student_card.card_number, request)
+
     context = {
         'card': student_card,
         'card_data': card_data,
         'user': user,
+        'google_wallet_save_url': build_google_wallet_save_url(student_card, verification_url),
     }
     return render(request, 'cards/card.html', context)
 

@@ -161,6 +161,13 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@tut4life.ac.z
 AZURE_EMAIL_CONNECTION_STRING = config('AZURE_EMAIL_CONNECTION_STRING', default='')
 AZURE_EMAIL_SENDER_ADDRESS = config('AZURE_EMAIL_SENDER_ADDRESS', default='')
 
+# Google Wallet - "Add to Google Wallet" button on the digital card page.
+# GOOGLE_WALLET_CREDENTIALS_JSON is the full service account key file's
+# contents (client_email + private_key are read out of it), not a path -
+# App Platform env vars can't reference a file on disk.
+GOOGLE_WALLET_ISSUER_ID = config('GOOGLE_WALLET_ISSUER_ID', default='')
+GOOGLE_WALLET_CREDENTIALS_JSON = config('GOOGLE_WALLET_CREDENTIALS_JSON', default='')
+
 # OCR Settings
 OCR_ENABLED = True
 OCR_CONFIDENCE_THRESHOLD = 0.8
