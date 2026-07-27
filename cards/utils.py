@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
-from PIL import Image
+from PIL import Image, ImageEnhance
 import qrcode
 import io
 
@@ -163,33 +163,48 @@ def binarize(image):
     return Image.fromarray(thresh)
 
 
+def upscale_and_enhance(pil_image):
+    """Upscale small images and boost contrast/sharpness before OCR.
+
+    Phone photos of a document are often smaller than a proper scan and
+    taken in inconsistent lighting - upscaling the long edge to a minimum
+    size and nudging contrast/sharpness noticeably improves Tesseract's
+    word confidence on that kind of source without needing cv2.
+    """
+    image = pil_image.convert('RGB')
+    max_dim = max(image.size)
+    if max_dim < 1600:
+        scale = min(3.0, 1600 / max_dim)
+        image = image.resize(
+            (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+            Image.LANCZOS,
+        )
+    image = ImageEnhance.Contrast(image).enhance(1.3)
+    image = ImageEnhance.Sharpness(image).enhance(1.5)
+    return image
+
+
 def preprocess_for_ocr(pil_image):
-    """Deskew and binarize a page image to improve Tesseract accuracy."""
+    """Upscale/enhance, then deskew and binarize a page image to improve Tesseract accuracy."""
+    image = upscale_and_enhance(pil_image)
+
     if not CV2_AVAILABLE:
-        return pil_image
+        return image
 
     try:
-        image_array = np.array(pil_image.convert('RGB'))
+        image_array = np.array(image)
         deskewed = deskew(image_array)
         return binarize(deskewed)
     except Exception as e:
         print(f"Image preprocessing error: {str(e)}")
-        return pil_image
+        return image
 
 
-def ocr_image_with_confidence(pil_image):
-    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100).
-
-    Runs Tesseract once (image_to_data) rather than twice (image_to_string
-    + image_to_data on the same image) - the second full OCR pass was
-    redundant since the same text can be reconstructed from image_to_data's
-    per-word output, and this OCR call is the single biggest contributor to
-    the request time that was hitting gunicorn's worker timeout.
+def _run_tesseract(image, psm):
+    """Run Tesseract once with the given page segmentation mode and return
+    (extracted_text, average_word_confidence 0-100, word_count).
     """
-    configure_tesseract()
-    processed = preprocess_for_ocr(pil_image)
-
-    data = pytesseract.image_to_data(processed, output_type=pytesseract.Output.DICT, config='--psm 6')
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT, config=f'--psm {psm}')
 
     total_confidence = 0
     word_count = 0
@@ -209,7 +224,31 @@ def ocr_image_with_confidence(pil_image):
 
     text = '\n'.join(' '.join(words) for words in lines.values())
     avg_confidence = (total_confidence / word_count) if word_count else 0.0
-    return text, round(avg_confidence, 2)
+    return text, avg_confidence, word_count
+
+
+def ocr_image_with_confidence(pil_image):
+    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100).
+
+    Runs with --psm 6 (uniform block of text) first - the common case for a
+    clean scan, and the single biggest contributor to request time (this
+    used to run twice unconditionally, which was hitting gunicorn's worker
+    timeout). Only retries with --psm 11 (sparse text) when the first pass
+    came back low-confidence or empty, which is what a phone photo taken at
+    an angle or with inconsistent spacing tends to produce - so the common
+    case still costs one Tesseract call, and only the bad-scan case pays for two.
+    """
+    configure_tesseract()
+    processed = preprocess_for_ocr(pil_image)
+
+    text, confidence, word_count = _run_tesseract(processed, psm=6)
+
+    if word_count == 0 or confidence < 50:
+        retry_text, retry_confidence, retry_word_count = _run_tesseract(processed, psm=11)
+        if retry_word_count > 0 and retry_confidence > confidence:
+            text, confidence, word_count = retry_text, retry_confidence, retry_word_count
+
+    return text, round(confidence, 2)
 
 
 def process_registration_proof(file):
