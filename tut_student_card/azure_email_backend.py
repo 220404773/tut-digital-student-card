@@ -34,8 +34,14 @@ class AzureCommunicationEmailBackend(BaseEmailBackend):
                 },
             }
             try:
-                poller = client.begin_send(azure_message)
-                poller.result()
+                # begin_send() itself already blocks until Azure accepts the
+                # message for delivery (same guarantee an SMTP relay's "250
+                # OK" gives - queued, not yet delivered). Deliberately not
+                # calling poller.result(), which instead polls until Azure
+                # finishes the entire send pipeline - that wait was adding
+                # several extra seconds to every signup/password-reset
+                # request for a completion status nothing here ever used.
+                client.begin_send(azure_message)
                 sent_count += 1
             except Exception:
                 if not self.fail_silently:

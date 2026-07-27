@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import time
 import uuid
 import hashlib
 from datetime import datetime, timedelta
@@ -285,6 +286,7 @@ def process_registration_proof(file):
                 temp_file.write(chunk)
         
         # Extract text from file
+        extraction_start = time.perf_counter()
         extracted_text = ""
         ocr_engine_confidence = 0.0
         if file.name.lower().endswith('.pdf'):
@@ -308,11 +310,13 @@ def process_registration_proof(file):
                 return None
             image = Image.open(temp_path)
             extracted_text, ocr_engine_confidence = ocr_image_with_confidence(image)
-        
+        extraction_duration = time.perf_counter() - extraction_start
+
         # No usable text to work with (either nothing was extracted, or PDF
         # rendering/OCR failed and left just the sentinel marker) - let the
         # file through so the user can fill in details manually.
         if not extracted_text.strip() or extracted_text.startswith("PDF processed"):
+            print(f"OCR pipeline timing: extraction={extraction_duration:.2f}s llm=skipped (no text)")
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             return {
@@ -326,7 +330,10 @@ def process_registration_proof(file):
 
         # One LLM call handles both classification and field extraction, so
         # there's no separate round-trip just to classify the document.
+        llm_start = time.perf_counter()
         llm_result = extract_with_llm(extracted_text)
+        llm_duration = time.perf_counter() - llm_start
+        print(f"OCR pipeline timing: extraction={extraction_duration:.2f}s llm={llm_duration:.2f}s total={extraction_duration + llm_duration:.2f}s")
         classification = resolve_document_classification(extracted_text, llm_result)
 
         if not classification['is_tut_proof_of_registration']:

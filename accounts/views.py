@@ -300,11 +300,14 @@ def signup(request):
             # Generate digital card if verified
             if user.is_verified:
                 try:
+                    card_gen_start = timezone.now()
                     generate_student_card(user, request)
+                    card_gen_duration = (timezone.now() - card_gen_start).total_seconds()
+                    print(f"Card generation (incl. QR upload) took {card_gen_duration:.2f}s for {user.email}")
                     messages.success(request, 'Your digital student card has been generated!')
                 except Exception as e:
                     messages.error(request, f'Error generating card: {str(e)}')
-            
+
             # Auto-login the user
             login(request, user)
 
@@ -313,8 +316,10 @@ def signup(request):
             link_recent_anonymous_visits(user, request)
 
             try:
+                email_send_start = timezone.now()
                 send_confirmation_email(user, request)
-                print(f"Confirmation email accepted by mail server for {user.email}")
+                email_send_duration = (timezone.now() - email_send_start).total_seconds()
+                print(f"Confirmation email accepted by mail server for {user.email} (took {email_send_duration:.2f}s)")
                 messages.info(request, 'Please check your email to confirm your address.')
             except Exception as e:
                 print(f"Error sending confirmation email to {user.email}: {str(e)}")
