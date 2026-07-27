@@ -175,8 +175,12 @@ def upscale_and_enhance(pil_image):
     """
     image = pil_image.convert('RGB')
     max_dim = max(image.size)
-    if max_dim < 1600:
-        scale = min(3.0, 1600 / max_dim)
+    # Upscaling too aggressively directly slows Tesseract down (its cost
+    # scales with pixel count) - 1200px/1.8x is a lighter target that still
+    # meaningfully helps a small/compressed phone photo without turning a
+    # modest image into one several times larger to run OCR against.
+    if max_dim < 1200:
+        scale = min(1.8, 1200 / max_dim)
         image = image.resize(
             (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
             Image.LANCZOS,
