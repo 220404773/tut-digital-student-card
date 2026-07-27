@@ -4,9 +4,14 @@
 
 {% block content %}
 <div class="page-header">
-    <div class="container">
-        <h1>Student Login</h1>
-        <p class="lead">Access your digital student card</p>
+    <div class="container d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+            <h1>Student Login</h1>
+            <p class="lead mb-0">Access your digital student card</p>
+        </div>
+        <a href="{% url 'signup' %}" class="btn btn-light btn-sm">
+            <i class="fas fa-user-plus"></i> Sign Up
+        </a>
     </div>
 </div>
 
