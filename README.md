@@ -1,15 +1,15 @@
 # TUT Digital Student Card System
 
-A digital student ID card system for Tshwane University of Technology. Students sign up with a proof-of-registration document, get it read automatically via OCR + an LLM classifier, and receive a digital card with a QR code — plus, optionally, an "Add to Google Wallet" pass.
+A digital student ID card system for Tshwane University of Technology. Students sign up with a proof of registration document, get it read automatically via OCR + an LLM classifier, and receive a digital card with a QR code — plus, optionally, an "Add to Google Wallet" pass.
 
-**Live deployment**: DigitalOcean App Platform + Managed PostgreSQL + Spaces (media) + Azure Communication Services (email) + Google Wallet (demo mode). See the [Deployment & Risk Brief](https://claude.ai/code/artifact/47e5bcfe-7355-4e82-b904-ddd74a05f35f) for the full rebuild-from-zero runbook, teardown steps, cost breakdown, and every risk finding closed or open.
+**Live deployment**: DigitalOcean App Platform + Managed PostgreSQL + Spaces (media) + Azure Communication Services (email) + Google Wallet (demo mode). 
 
 ## Features
 
 - **Signup with document verification** — student number + proof of registration (PDF/JPG/PNG), read via Tesseract OCR and classified/extracted by an NVIDIA-hosted LLM
 - **Digital card** — auto-generated on verification, with a unique card number and QR code
 - **Email confirmation** — a separate identity check from OCR verification, requiring an explicit button click (not just visiting the link) so email security scanners can't silently consume it
-- **Google Wallet** — optional "Add to Google Wallet" button, signed via a service account key, no custom branding required
+- **Google Wallet** — "Add to Google Wallet" button, signed via a service account key, no custom branding required
 - **Public card verification** — scanning the QR code (or the Wallet pass) opens an unauthenticated page showing card validity, styled to match the card itself; an invalid/expired card is deliberately styled differently (red, not blue) so it reads as alarming to whoever scans it
 - **Admin reporting dashboard** — signup performance, OCR accuracy/confidence, email confirmation rate and time-to-confirm, site traffic, all with drill-down detail pages
 - **Rate limiting** on login, signup, OCR preview, password reset, and public verification
@@ -104,7 +104,7 @@ python manage.py test
 
 Every environment variable the app reads is documented with comments in **`.env.example`** — copy it to `.env` and fill in what you need. Nothing is required for local development beyond `NVIDIA_API_KEY` (and even that only affects OCR classification quality, not whether the app runs).
 
-For production values (DigitalOcean Managed Database, Spaces, Azure Communication Services, Google Wallet), see the [Deployment & Risk Brief](https://claude.ai/code/artifact/47e5bcfe-7355-4e82-b904-ddd74a05f35f) — it has the exact setup steps for each, in the order that avoids the dead ends already hit once (the free App Platform "Dev Database" and SendGrid/Brevo's email-authentication problems, specifically).
+For production values (DigitalOcean Managed Database, Spaces, Azure Communication Services, Google Wallet)
 
 ## How it works
 
@@ -123,7 +123,7 @@ A staff member can tick "is_verified" on a student directly in Django admin — 
 
 ## Deployment
 
-Live on DigitalOcean App Platform. The full explicit runbook — including exact `doctl` commands, the Azure Communication Services email setup (and why it replaced Brevo/SendGrid), the Google Wallet setup, environment variable list, teardown steps, and cost breakdown — lives in the **[Deployment & Risk Brief](https://claude.ai/code/artifact/47e5bcfe-7355-4e82-b904-ddd74a05f35f)** rather than being duplicated here, so there's one source of truth instead of two that can drift apart.
+Live on DigitalOcean App Platform. The full explicit runbook — including exact `doctl` commands, the Azure Communication Services email setup, the Google Wallet setup, environment variable list, teardown steps, rather than being duplicated here, so there's one source of truth instead of two that can drift apart.
 
 ## Known limitations
 
@@ -131,4 +131,4 @@ Live on DigitalOcean App Platform. The full explicit runbook — including exact
 - Rate limiting uses Django's default in-process cache, correct for the current single-instance deployment but wouldn't hold across multiple instances without switching to a shared cache backend
 - Google Wallet is in Demo Mode (test accounts only, "[TEST ONLY]" watermark) — going further would need Google's business verification review for publishing access
 
-See the Deployment & Risk Brief's risk findings section for the full list of what's been found and fixed, with the reasoning behind each.
+
