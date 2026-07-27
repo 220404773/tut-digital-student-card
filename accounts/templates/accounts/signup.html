@@ -54,20 +54,8 @@
                         </div>
                         {% include 'form_field.html' with field=form.phone %}
 
-                        <div class="row">
-                            <div class="col-md-6">
-                                {% include 'form_field.html' with field=form.password1 %}
-                            </div>
-                            <div class="col-md-6">
-                                {% include 'form_field.html' with field=form.password2 %}
-                            </div>
-                        </div>
-
-                        {% if form.password1.help_text %}
-                            <small class="form-text text-muted d-block mb-2">
-                                {{ form.password1.help_text|safe }}
-                            </small>
-                        {% endif %}
+                        {% include 'form_field.html' with field=form.password1 %}
+                        {% include 'form_field.html' with field=form.password2 %}
 
                         <button type="submit" class="btn btn-primary w-100 mt-2">
                             <i class="fas fa-user-check"></i> Create Account
