@@ -165,22 +165,24 @@ def binarize(image):
     return Image.fromarray(thresh)
 
 
-def upscale_and_enhance(pil_image):
+def upscale_and_enhance(pil_image, heavy=False):
     """Upscale small images and boost contrast/sharpness before OCR.
 
     Phone photos of a document are often smaller than a proper scan and
     taken in inconsistent lighting - upscaling the long edge to a minimum
     size and nudging contrast/sharpness noticeably improves Tesseract's
     word confidence on that kind of source without needing cv2.
+
+    `heavy=True` upscales further (1600px/3x vs the default 1200px/1.8x).
+    Upscaling more directly costs more Tesseract runtime (it scales with
+    pixel count), so the light target is tried first for every image and
+    this is only used as a retry for scans that came back low-confidence.
     """
     image = pil_image.convert('RGB')
     max_dim = max(image.size)
-    # Upscaling too aggressively directly slows Tesseract down (its cost
-    # scales with pixel count) - 1200px/1.8x is a lighter target that still
-    # meaningfully helps a small/compressed phone photo without turning a
-    # modest image into one several times larger to run OCR against.
-    if max_dim < 1200:
-        scale = min(1.8, 1200 / max_dim)
+    target, cap = (1600, 3.0) if heavy else (1200, 1.8)
+    if max_dim < target:
+        scale = min(cap, target / max_dim)
         image = image.resize(
             (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
             Image.LANCZOS,
@@ -190,9 +192,9 @@ def upscale_and_enhance(pil_image):
     return image
 
 
-def preprocess_for_ocr(pil_image):
+def preprocess_for_ocr(pil_image, heavy=False):
     """Upscale/enhance, then deskew and binarize a page image to improve Tesseract accuracy."""
-    image = upscale_and_enhance(pil_image)
+    image = upscale_and_enhance(pil_image, heavy=heavy)
 
     if not CV2_AVAILABLE:
         return image
@@ -233,26 +235,41 @@ def _run_tesseract(image, psm):
     return text, avg_confidence, word_count
 
 
-def ocr_image_with_confidence(pil_image):
-    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100).
-
-    Runs with --psm 6 (uniform block of text) first - the common case for a
-    clean scan, and the single biggest contributor to request time (this
-    used to run twice unconditionally, which was hitting gunicorn's worker
-    timeout). Only retries with --psm 11 (sparse text) when the first pass
-    came back low-confidence or empty, which is what a phone photo taken at
-    an angle or with inconsistent spacing tends to produce - so the common
-    case still costs one Tesseract call, and only the bad-scan case pays for two.
+def _ocr_pass(pil_image, heavy):
+    """Preprocess at the given intensity and run Tesseract, retrying with
+    --psm 11 (sparse text) if --psm 6 (uniform block) came back low-confidence
+    or empty - covers a phone photo taken at an angle or with inconsistent
+    spacing. Returns (text, confidence, word_count).
     """
-    configure_tesseract()
-    processed = preprocess_for_ocr(pil_image)
-
+    processed = preprocess_for_ocr(pil_image, heavy=heavy)
     text, confidence, word_count = _run_tesseract(processed, psm=6)
 
     if word_count == 0 or confidence < 50:
         retry_text, retry_confidence, retry_word_count = _run_tesseract(processed, psm=11)
         if retry_word_count > 0 and retry_confidence > confidence:
             text, confidence, word_count = retry_text, retry_confidence, retry_word_count
+
+    return text, confidence, word_count
+
+
+def ocr_image_with_confidence(pil_image):
+    """Run Tesseract on an image and return (extracted_text, average_word_confidence 0-100).
+
+    Tries the lighter/faster preprocessing target first, since most uploads
+    are a clean-enough phone photo that don't need more - only escalates to
+    heavier upscaling (more Tesseract runtime, since cost scales with pixel
+    count) when that first pass came back weak, the same trade the psm 6/11
+    retry inside _ocr_pass already makes. So a good scan still costs one
+    Tesseract call, and only a genuinely weak one pays for the extra passes.
+    """
+    configure_tesseract()
+
+    text, confidence, word_count = _ocr_pass(pil_image, heavy=False)
+
+    if word_count == 0 or confidence < 70:
+        heavy_text, heavy_confidence, heavy_word_count = _ocr_pass(pil_image, heavy=True)
+        if heavy_word_count > 0 and heavy_confidence > confidence:
+            text, confidence, word_count = heavy_text, heavy_confidence, heavy_word_count
 
     return text, round(confidence, 2)
 
