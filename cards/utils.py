@@ -77,6 +77,12 @@ def get_llm_client():
         # noisier OCR text is expected in exchange.
         model='meta/llama-3.1-8b-instruct',
         nvidia_api_key=api_key,
+        # Default client timeout is 60s - a real signup hit that exact
+        # timeout with no result. extract_with_llm already has a solid
+        # regex fallback (extract_fields_from_text), so it's better to give
+        # up on a slow NVIDIA response sooner and fail over, rather than
+        # make the student wait a full 60s for a call that isn't answering.
+        timeout=20,
     )
 
 
