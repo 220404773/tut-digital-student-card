@@ -26,12 +26,31 @@
             </span>
             <form method="post" action="{% url 'resend_confirmation' %}" class="mb-0">
                 {% csrf_token %}
-                {% if confirmation_cooldown_remaining > 0 %}
-                    <button type="submit" class="btn btn-sm btn-outline-dark" disabled>Resend available in {{ confirmation_cooldown_remaining }}s</button>
-                {% else %}
-                    <button type="submit" class="btn btn-sm btn-outline-dark">Resend email</button>
-                {% endif %}
+                <button type="submit" id="resend-confirmation-btn" class="btn btn-sm btn-outline-dark"
+                        data-remaining="{{ confirmation_cooldown_remaining }}"
+                        {% if confirmation_cooldown_remaining > 0 %}disabled{% endif %}>
+                    {% if confirmation_cooldown_remaining > 0 %}Resend available in {{ confirmation_cooldown_remaining }}s{% else %}Resend email{% endif %}
+                </button>
             </form>
+            <script>
+                (function() {
+                    var btn = document.getElementById('resend-confirmation-btn');
+                    var remaining = parseInt(btn.dataset.remaining, 10) || 0;
+                    if (remaining <= 0) {
+                        return;
+                    }
+                    var timer = setInterval(function() {
+                        remaining -= 1;
+                        if (remaining <= 0) {
+                            clearInterval(timer);
+                            btn.disabled = false;
+                            btn.textContent = 'Resend email';
+                        } else {
+                            btn.textContent = 'Resend available in ' + remaining + 's';
+                        }
+                    }, 1000);
+                })();
+            </script>
         </div>
     {% endif %}
 
