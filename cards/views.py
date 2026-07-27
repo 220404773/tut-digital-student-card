@@ -245,6 +245,9 @@ def performance_dashboard(request):
         ) * 100
     else:
         email_confirmation_stats['confirmation_rate'] = 0
+    email_confirmation_stats['awaiting_count'] = (
+        email_confirmation_stats['total_students'] - email_confirmation_stats['confirmed_count']
+    )
 
     # OCR metrics
     ocr_stats = OCRMetrics.objects.aggregate(

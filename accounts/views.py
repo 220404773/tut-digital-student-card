@@ -1,3 +1,4 @@
+from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
 from django.core.mail import send_mail
@@ -18,7 +19,9 @@ from .models import StudentUser
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, SignupMetrics, OCRMetrics
-from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, link_recent_anonymous_visits
+from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, link_recent_anonymous_visits, hash_uploaded_file
+
+OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 
 
 def post_login_redirect(user):
@@ -104,12 +107,24 @@ def preview_registration_proof(request):
         return JsonResponse({'success': False, 'message': 'This file does not look like a valid PDF, JPG, or PNG.'}, status=400)
 
     try:
+        ocr_start_time = timezone.now()
         ocr_result = process_registration_proof(registration_proof)
+        ocr_duration = (timezone.now() - ocr_start_time).total_seconds()
         if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
             return JsonResponse({'success': False, 'message': 'This does not look like a valid TUT proof of registration. Please upload the correct document.'}, status=400)
 
         if not ocr_result:
             return JsonResponse({'success': False, 'message': 'No extractable information was found in the uploaded document.'}, status=400)
+
+        # Cache the result against this exact file's content so signup(), if
+        # submitted with the same unmodified file, can reuse it instead of
+        # running OCR (and the LLM call) a second time - that redundant
+        # second pass used to roughly double signup latency.
+        request.session[OCR_PREVIEW_SESSION_KEY] = {
+            'hash': hash_uploaded_file(registration_proof),
+            'result': ocr_result,
+            'duration': ocr_duration,
+        }
 
         # Allow file to proceed even if we can't extract details (OCR may not be available)
         # User can fill in details manually
@@ -193,12 +208,22 @@ def signup(request):
                 user.registration_proof = registration_proof
                 file_upload_size_mb = registration_proof.size / (1024 * 1024)  # Convert to MB
                 
-                # Run OCR verification
+                # Run OCR verification - reuse the live-preview result if this
+                # is the same file the student already previewed, instead of
+                # running OCR (and the LLM call) a second time.
                 try:
-                    ocr_start_time = timezone.now()
-                    ocr_result = process_registration_proof(registration_proof)
-                    ocr_end_time = timezone.now()
-                    ocr_duration = (ocr_end_time - ocr_start_time).total_seconds()
+                    cached_preview = request.session.get(OCR_PREVIEW_SESSION_KEY)
+                    if cached_preview and cached_preview.get('hash') == hash_uploaded_file(registration_proof):
+                        ocr_result = cached_preview['result']
+                        ocr_duration = cached_preview.get('duration', 0)
+                        ocr_end_time = timezone.now()
+                        ocr_start_time = ocr_end_time - timedelta(seconds=ocr_duration)
+                        del request.session[OCR_PREVIEW_SESSION_KEY]
+                    else:
+                        ocr_start_time = timezone.now()
+                        ocr_result = process_registration_proof(registration_proof)
+                        ocr_end_time = timezone.now()
+                        ocr_duration = (ocr_end_time - ocr_start_time).total_seconds()
 
                     if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
                         user.is_verified = False

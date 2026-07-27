@@ -2,6 +2,7 @@ import os
 import re
 import json
 import uuid
+import hashlib
 from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
@@ -249,6 +250,21 @@ def ocr_image_with_confidence(pil_image):
             text, confidence, word_count = retry_text, retry_confidence, retry_word_count
 
     return text, round(confidence, 2)
+
+
+def hash_uploaded_file(file):
+    """Content hash of an uploaded file, used to tell whether the file
+    submitted with the signup form is the same one already OCR'd during the
+    live preview - so signup() can reuse that result instead of paying for a
+    second full OCR+LLM pass on an unchanged file. Resets the file position
+    afterwards so callers can still read it from the start.
+    """
+    file.seek(0)
+    digest = hashlib.sha256()
+    for chunk in file.chunks():
+        digest.update(chunk)
+    file.seek(0)
+    return digest.hexdigest()
 
 
 def process_registration_proof(file):

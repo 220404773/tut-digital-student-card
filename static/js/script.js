@@ -3,6 +3,20 @@
 document.addEventListener('DOMContentLoaded', function() {
     const fileInput = document.getElementById('id_registration_proof');
 
+    // Signup submission can take a while (OCR + LLM classification) - without
+    // this, an impatient double-click submits the form twice, which can
+    // create two accounts/cards or send the confirmation email twice.
+    const signupForm = document.querySelector('form[enctype="multipart/form-data"]');
+    if (signupForm) {
+        signupForm.addEventListener('submit', function() {
+            const submitButton = signupForm.querySelector('button[type="submit"]');
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating your account...';
+            }
+        });
+    }
+
     if (!fileInput) {
         return;
     }
