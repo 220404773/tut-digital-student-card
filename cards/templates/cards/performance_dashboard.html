@@ -45,6 +45,28 @@
             </div>
 
             <div class="col-md-3 mb-3">
+                <a href="{% url 'report_card_activity' %}?filter=revoked" class="tile-link">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body">
+                            <h6 class="card-title">Cards Revoked</h6>
+                            <h3>{{ card_stats.revoked_count }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
+                <a href="{% url 'report_card_activity' %}?filter=reissued" class="tile-link">
+                    <div class="card" style="background-color: #6f42c1; color: white;">
+                        <div class="card-body">
+                            <h6 class="card-title">Cards Reissued</h6>
+                            <h3>{{ card_stats.reissued_count }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
                 <a href="{% url 'report_ocr' %}" class="tile-link">
                     <div class="card bg-info text-white">
                         <div class="card-body">

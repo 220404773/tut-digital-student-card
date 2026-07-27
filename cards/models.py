@@ -37,6 +37,13 @@ class CardActivity(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=255, null=True, blank=True)
+    # Which staff member performed a revoke/reissue - null for
+    # student-initiated events (viewed/downloaded/verified) where there's no
+    # staff actor. This is the minimum needed for a staff-facing audit trail
+    # ("who revoked this card, and when").
+    performed_by = models.ForeignKey(
+        StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='card_actions_performed'
+    )
     
     class Meta:
         ordering = ['-timestamp']

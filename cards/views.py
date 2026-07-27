@@ -283,6 +283,11 @@ def performance_dashboard(request):
             expiry_date__gte=today,
             expiry_date__lte=today + timedelta(days=90),
         ).count(),
+        # Counts of revoke/reissue events (not current card status) - this is
+        # an audit-trail metric, so it should reflect how many times staff
+        # took the action, not how many cards currently sit in that state.
+        'revoked_count': CardActivity.objects.filter(activity_type='revoked').count(),
+        'reissued_count': CardActivity.objects.filter(activity_type='reissued').count(),
     }
 
     # Site traffic
@@ -381,6 +386,29 @@ def report_ocr(request):
     return render(request, 'cards/report_ocr.html', {
         'ocr_records': ocr_records,
         'title': titles.get(filter_type, 'OCR Processing Details'),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_card_activity(request):
+    """Drill-down behind the Revoked/Reissued tiles - a basic staff-facing
+    audit trail. Every CardActivity row is logged already; this is just the
+    first screen to actually see them, optionally filtered to one type."""
+    filter_type = request.GET.get('filter')
+    activities = CardActivity.objects.select_related(
+        'student_card__user', 'performed_by'
+    ).order_by('-timestamp')
+
+    titles = {
+        'revoked': 'Revoked Cards',
+        'reissued': 'Reissued Cards',
+    }
+    if filter_type in ('revoked', 'reissued'):
+        activities = activities.filter(activity_type=filter_type)
+
+    return render(request, 'cards/report_card_activity.html', {
+        'activities': activities[:500],
+        'title': titles.get(filter_type, 'All Card Activity'),
     })
 
 

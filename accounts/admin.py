@@ -37,7 +37,7 @@ class StudentUserAdmin(UserAdmin):
                 continue
             card.status = 'revoked'
             card.save()
-            CardActivity.objects.create(student_card=card, activity_type='revoked')
+            CardActivity.objects.create(student_card=card, activity_type='revoked', performed_by=request.user)
             revoked += 1
 
         message = f'Revoked {revoked} card(s).'
@@ -66,7 +66,7 @@ class StudentUserAdmin(UserAdmin):
             card.status = 'active'
             card.save()
             generate_qr_code_for_card(card, request)
-            CardActivity.objects.create(student_card=card, activity_type='reissued')
+            CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
             reissued += 1
 
         message = f'Reissued {reissued} card(s), newly issued {newly_issued} card(s).'
