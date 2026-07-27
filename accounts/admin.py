@@ -3,8 +3,8 @@ import re
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
-from cards.models import StudentCard
-from cards.utils import generate_student_card
+from cards.models import StudentCard, CardActivity
+from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
 from .models import StudentUser
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
@@ -24,6 +24,55 @@ class StudentUserAdmin(UserAdmin):
         ('Student Info', {'fields': ('student_number', 'phone', 'date_of_birth', 'gender', 'profile_picture')}),
         ('Registration', {'fields': ('registration_proof', 'is_verified', 'registration_end_date')}),
     )
+    actions = ['revoke_card_action', 'reissue_card_action']
+
+    @admin.action(description='Revoke digital card')
+    def revoke_card_action(self, request, queryset):
+        revoked = 0
+        skipped = 0
+        for student in queryset:
+            card = StudentCard.objects.filter(user=student).first()
+            if not card:
+                skipped += 1
+                continue
+            card.status = 'revoked'
+            card.save()
+            CardActivity.objects.create(student_card=card, activity_type='revoked')
+            revoked += 1
+
+        message = f'Revoked {revoked} card(s).'
+        if skipped:
+            message += f' {skipped} selected student(s) had no card to revoke.'
+        self.message_user(request, message)
+
+    @admin.action(description='Reissue digital card (new card number + QR code)')
+    def reissue_card_action(self, request, queryset):
+        reissued = 0
+        newly_issued = 0
+        failed = 0
+        for student in queryset:
+            card = StudentCard.objects.filter(user=student).first()
+            if not card:
+                # No card yet - issue one the same way OCR/manual verification does,
+                # rather than silently skipping the student.
+                try:
+                    generate_student_card(student, request)
+                    newly_issued += 1
+                except Exception as e:
+                    failed += 1
+                continue
+
+            card.card_number = generate_unique_card_number(student)
+            card.status = 'active'
+            card.save()
+            generate_qr_code_for_card(card, request)
+            CardActivity.objects.create(student_card=card, activity_type='reissued')
+            reissued += 1
+
+        message = f'Reissued {reissued} card(s), newly issued {newly_issued} card(s).'
+        if failed:
+            message += f' Failed to issue a card for {failed} student(s).'
+        self.message_user(request, message)
 
     def save_model(self, request, obj, form, change):
         # Staff+superuser accounts aren't real students - give them a

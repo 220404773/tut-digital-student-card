@@ -10,7 +10,11 @@ class StudentCard(models.Model):
     qr_code = models.ImageField(upload_to='qr_codes/', null=True, blank=True)
     issue_date = models.DateTimeField(auto_now_add=True)
     expiry_date = models.DateField(null=True, blank=True)
-    status = models.CharField(max_length=20, choices=[('active', 'Active'), ('expired', 'Expired')], default='active')
+    status = models.CharField(
+        max_length=20,
+        choices=[('active', 'Active'), ('expired', 'Expired'), ('revoked', 'Revoked')],
+        default='active',
+    )
     
     def __str__(self):
         return f"Card {self.card_number}"
@@ -23,7 +27,13 @@ class StudentCard(models.Model):
 class CardActivity(models.Model):
     """Track card activities (view, download, etc)."""
     student_card = models.ForeignKey(StudentCard, on_delete=models.CASCADE, related_name='activities')
-    activity_type = models.CharField(max_length=20, choices=[('viewed', 'Viewed'), ('downloaded', 'Downloaded'), ('verified', 'Verified')])
+    activity_type = models.CharField(max_length=20, choices=[
+        ('viewed', 'Viewed'),
+        ('downloaded', 'Downloaded'),
+        ('verified', 'Verified'),
+        ('revoked', 'Revoked'),
+        ('reissued', 'Reissued'),
+    ])
     timestamp = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.CharField(max_length=255, null=True, blank=True)
