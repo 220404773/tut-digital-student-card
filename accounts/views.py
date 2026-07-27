@@ -295,13 +295,18 @@ def signup(request):
                     user.is_verified = False
                     messages.warning(request, f'OCR processing error: {str(e)}. Please try again.')
             
+            _t_save = timezone.now()
             user.save()
+            print(f"user.save() took {(timezone.now() - _t_save).total_seconds():.2f}s")
+            _t_delete = timezone.now()
             delete_registration_proof(user)
-            
+            print(f"delete_registration_proof() took {(timezone.now() - _t_delete).total_seconds():.2f}s")
+
             # Track signup metrics
             signup_end_time = timezone.now()
             signup_duration = (signup_end_time - signup_start_time).total_seconds()
             
+            _t_signup_metrics = timezone.now()
             try:
                 SignupMetrics.objects.create(
                     user=user,
@@ -312,9 +317,11 @@ def signup(request):
                 )
             except Exception as e:
                 print(f"Error tracking signup metrics: {str(e)}")
-            
+            print(f"SignupMetrics.create() took {(timezone.now() - _t_signup_metrics).total_seconds():.2f}s")
+
             # Track OCR metrics if OCR was performed
             if ocr_result:
+                _t_ocr_metrics = timezone.now()
                 try:
                     OCRMetrics.objects.create(
                         user=user,
@@ -330,6 +337,7 @@ def signup(request):
                     )
                 except Exception as e:
                     print(f"Error tracking OCR metrics: {str(e)}")
+                print(f"OCRMetrics.create() took {(timezone.now() - _t_ocr_metrics).total_seconds():.2f}s")
             
             # Generate digital card if verified
             if user.is_verified:
@@ -343,11 +351,15 @@ def signup(request):
                     messages.error(request, f'Error generating card: {str(e)}')
 
             # Auto-login the user
+            _t_login = timezone.now()
             login(request, user)
+            print(f"login() took {(timezone.now() - _t_login).total_seconds():.2f}s")
 
             # Attribute their pre-signup page visits (e.g. viewing the signup
             # form) to the account that just got created.
+            _t_link_visits = timezone.now()
             link_recent_anonymous_visits(user, request)
+            print(f"link_recent_anonymous_visits() took {(timezone.now() - _t_link_visits).total_seconds():.2f}s")
 
             try:
                 email_send_start = timezone.now()
