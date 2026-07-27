@@ -6,6 +6,7 @@ from django.contrib.auth.models import Group
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
 from .models import StudentUser
+from .views import delete_registration_proof
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
 
@@ -62,10 +63,17 @@ class StudentUserAdmin(UserAdmin):
                     failed += 1
                 continue
 
+            # The new QR filename is based on the new card number, so it
+            # won't overwrite the old one - without deleting it explicitly,
+            # every reissue would leave the previous QR image orphaned in
+            # storage forever.
+            old_qr_code = card.qr_code
             card.card_number = generate_unique_card_number(student)
             card.status = 'active'
             card.save()
             generate_qr_code_for_card(card, request)
+            if old_qr_code:
+                old_qr_code.storage.delete(old_qr_code.name)
             CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
             reissued += 1
 
@@ -95,6 +103,13 @@ class StudentUserAdmin(UserAdmin):
             obj.student_number = f'STAFF-ADMIN-{next_number}'
 
         super().save_model(request, obj, form, change)
+
+        # The "Registration" fieldset exposes registration_proof directly -
+        # if a staff member uploads one here, there's no OCR step to trigger
+        # the usual cleanup, so it would otherwise sit in storage
+        # indefinitely. This field is never meant to persist either way.
+        if obj.registration_proof:
+            delete_registration_proof(obj)
 
         # Ticking "is_verified" here is a manual/soft approval - equivalent
         # to the OCR auto-verification path in signup(), so it should
