@@ -315,7 +315,7 @@
                                 <div class="card border-danger">
                                     <div class="card-body text-center">
                                         <h5 class="text-danger"><i class="fas fa-times-circle"></i> Inaccurate</h5>
-                                        <h3>{{ ocr_stats.total_ocr|add:"-"|add:ocr_stats.accurate_count|add:"-"|add:ocr_stats.needs_review_count }}</h3>
+                                        <h3>{{ ocr_stats.inaccurate_count }}</h3>
                                     </div>
                                 </div>
                             </a>

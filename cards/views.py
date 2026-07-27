@@ -227,12 +227,12 @@ def performance_dashboard(request):
     confirmation_duration = ExpressionWrapper(
         F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
     )
-    email_confirmation_stats = StudentUser.objects.aggregate(
+    email_confirmation_stats = StudentUser.objects.filter(is_staff=False).aggregate(
         total_students=Count('id'),
         confirmed_count=Count('id', filter=Q(email_confirmed=True)),
     )
     confirmation_times = StudentUser.objects.filter(
-        email_confirmed=True, email_confirmed_at__isnull=False
+        is_staff=False, email_confirmed=True, email_confirmed_at__isnull=False
     ).annotate(confirmation_duration=confirmation_duration).aggregate(
         avg_confirmation_time=Avg('confirmation_duration'),
         min_confirmation_time=Min('confirmation_duration'),
@@ -263,6 +263,10 @@ def performance_dashboard(request):
         ocr_stats['accuracy_percentage'] = (ocr_stats['accurate_count'] / ocr_stats['total_ocr']) * 100
     else:
         ocr_stats['accuracy_percentage'] = 0
+
+    ocr_stats['inaccurate_count'] = (
+        ocr_stats['total_ocr'] - ocr_stats['accurate_count'] - ocr_stats['needs_review_count']
+    )
 
     # Card metrics
     today = timezone.now().date()
@@ -326,7 +330,7 @@ def report_email_confirmation(request):
     confirmation_duration = ExpressionWrapper(
         F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
     )
-    students = StudentUser.objects.annotate(confirmation_duration=confirmation_duration)
+    students = StudentUser.objects.filter(is_staff=False).annotate(confirmation_duration=confirmation_duration)
 
     if filter_type == 'confirmed':
         title = 'Email Confirmed'
