@@ -1,6 +1,7 @@
 from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
+from django.core.cache import cache
 from django.core.mail import send_mail
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
@@ -22,6 +23,30 @@ from cards.models import StudentCard, SignupMetrics, OCRMetrics
 from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, link_recent_anonymous_visits, hash_uploaded_file
 
 OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
+
+# Minimum wait between confirmation emails to the same account - matches the
+# ~60s resend cooldown most mail-sending flows use (GitHub, Google account
+# recovery, etc.), long enough to cover normal delivery delay so a student
+# can't spam themselves (and the mail provider) with repeat sends.
+EMAIL_CONFIRMATION_COOLDOWN_SECONDS = 60
+
+
+def _confirmation_cooldown_key(user):
+    return f'email_confirmation_cooldown_{user.pk}'
+
+
+def start_confirmation_cooldown(user):
+    allowed_at = timezone.now() + timedelta(seconds=EMAIL_CONFIRMATION_COOLDOWN_SECONDS)
+    cache.set(_confirmation_cooldown_key(user), allowed_at, EMAIL_CONFIRMATION_COOLDOWN_SECONDS)
+
+
+def confirmation_cooldown_remaining(user):
+    """Whole seconds left before another confirmation email can be sent to
+    this user, or 0 if they're clear to send/resend now."""
+    allowed_at = cache.get(_confirmation_cooldown_key(user))
+    if not allowed_at:
+        return 0
+    return max(0, round((allowed_at - timezone.now()).total_seconds()))
 
 
 def post_login_redirect(user):
@@ -49,6 +74,7 @@ def send_confirmation_email(user, request):
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
     )
+    start_confirmation_cooldown(user)
 
 
 def delete_registration_proof(user):
@@ -196,6 +222,15 @@ def signup(request):
             # email, so derive the username from it instead of leaving it blank
             # (which caused every second signup to collide on the unique constraint).
             user.username = user.email
+            # registration_proof is a ModelForm field, so form.save() above
+            # already attached the uploaded file to this instance - clear it
+            # immediately. OCR reads directly from the in-memory upload
+            # (registration_proof local var below), never from this field,
+            # so leaving it set would upload the file to Spaces on the next
+            # user.save() only to have delete_registration_proof() delete it
+            # again moments later (POPIA) - a full upload+check+delete round
+            # trip against S3 for a file that was never needed in storage.
+            user.registration_proof = None
 
             # Track file upload metrics
             file_upload_size_mb = 0
@@ -205,13 +240,6 @@ def signup(request):
             # Process the uploaded registration proof with OCR
             if 'registration_proof' in request.FILES:
                 registration_proof = request.FILES['registration_proof']
-                # Deliberately not assigning this to user.registration_proof:
-                # OCR reads directly from the in-memory upload below, and the
-                # field would otherwise get uploaded to Spaces on user.save()
-                # only to be immediately deleted again by
-                # delete_registration_proof() a few lines later (POPIA) - a
-                # full upload+HEAD+delete round trip for a file that was
-                # never actually needed in storage.
                 file_upload_size_mb = registration_proof.size / (1024 * 1024)  # Convert to MB
                 
                 # Run OCR verification - reuse the live-preview result if this
@@ -428,13 +456,17 @@ def resend_confirmation_email(request):
     expired or never arrived."""
     if request.method == 'POST' and not getattr(request, 'limited', False):
         if not request.user.email_confirmed:
-            try:
-                send_confirmation_email(request.user, request)
-                print(f"Confirmation email accepted by mail server for {request.user.email}")
-                messages.success(request, 'Confirmation email sent - please check your inbox.')
-            except Exception as e:
-                print(f"Error sending confirmation email to {request.user.email}: {str(e)}")
-                messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
+            remaining = confirmation_cooldown_remaining(request.user)
+            if remaining > 0:
+                messages.warning(request, f'Please wait {remaining}s before requesting another confirmation email.')
+            else:
+                try:
+                    send_confirmation_email(request.user, request)
+                    print(f"Confirmation email accepted by mail server for {request.user.email}")
+                    messages.success(request, 'Confirmation email sent - please check your inbox.')
+                except Exception as e:
+                    print(f"Error sending confirmation email to {request.user.email}: {str(e)}")
+                    messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
     elif getattr(request, 'limited', False):
         messages.error(request, 'Too many resend attempts - please wait a while and try again.')
     return redirect(request.META.get('HTTP_REFERER') or 'dashboard')

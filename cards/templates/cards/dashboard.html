@@ -26,7 +26,11 @@
             </span>
             <form method="post" action="{% url 'resend_confirmation' %}" class="mb-0">
                 {% csrf_token %}
-                <button type="submit" class="btn btn-sm btn-outline-dark">Resend email</button>
+                {% if confirmation_cooldown_remaining > 0 %}
+                    <button type="submit" class="btn btn-sm btn-outline-dark" disabled>Resend available in {{ confirmation_cooldown_remaining }}s</button>
+                {% else %}
+                    <button type="submit" class="btn btn-sm btn-outline-dark">Resend email</button>
+                {% endif %}
             </form>
         </div>
     {% endif %}

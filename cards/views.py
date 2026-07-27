@@ -32,16 +32,19 @@ def dashboard(request):
     """
     Student dashboard showing their digital card.
     """
+    from accounts.views import confirmation_cooldown_remaining
+
     user = request.user
     try:
         student_card = StudentCard.objects.get(user=user)
     except StudentCard.DoesNotExist:
         student_card = None
-    
+
     context = {
         'student_card': student_card,
         'is_verified': user.is_verified,
         'card_data': get_card_display_data(student_card) if student_card else None,
+        'confirmation_cooldown_remaining': confirmation_cooldown_remaining(user) if not user.email_confirmed else 0,
     }
     return render(request, 'cards/dashboard.html', context)
 
