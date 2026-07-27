@@ -205,7 +205,13 @@ def signup(request):
             # Process the uploaded registration proof with OCR
             if 'registration_proof' in request.FILES:
                 registration_proof = request.FILES['registration_proof']
-                user.registration_proof = registration_proof
+                # Deliberately not assigning this to user.registration_proof:
+                # OCR reads directly from the in-memory upload below, and the
+                # field would otherwise get uploaded to Spaces on user.save()
+                # only to be immediately deleted again by
+                # delete_registration_proof() a few lines later (POPIA) - a
+                # full upload+HEAD+delete round trip for a file that was
+                # never actually needed in storage.
                 file_upload_size_mb = registration_proof.size / (1024 * 1024)  # Convert to MB
                 
                 # Run OCR verification - reuse the live-preview result if this
