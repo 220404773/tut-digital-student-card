@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Deleted Students - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Deleted Students</h1>
+        <p class="lead">{{ deleted|length }} record{{ deleted|length|pluralize }}</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Full Name</th>
+                    <th>Student Number</th>
+                    <th>Email</th>
+                    <th>Was Verified</th>
+                    <th>Had Card</th>
+                    <th>Card Number</th>
+                    <th>Deleted By</th>
+                    <th>Deleted At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in deleted %}
+                    <tr>
+                        <td>{{ entry.full_name }}</td>
+                        <td>{{ entry.student_number }}</td>
+                        <td>{{ entry.email }}</td>
+                        <td>
+                            {% if entry.was_verified %}
+                                <span class="badge bg-success">Verified</span>
+                            {% else %}
+                                <span class="badge bg-warning">Pending</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ entry.had_card|yesno:"Yes,No" }}</td>
+                        <td>{{ entry.card_number|default:"-" }}</td>
+                        <td>{{ entry.deleted_by.get_full_name_display|default:"-" }}</td>
+                        <td>{{ entry.deleted_at|date:"Y-m-d H:i:s" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center text-muted">No students have been deleted</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Reports
+    </a>
+</div>
+{% endblock %}

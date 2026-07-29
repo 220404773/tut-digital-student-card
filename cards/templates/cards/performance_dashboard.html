@@ -67,6 +67,17 @@
             </div>
 
             <div class="col-md-3 mb-3">
+                <a href="{% url 'report_deleted_students' %}" class="tile-link">
+                    <div class="card" style="background-color: #495057; color: white;">
+                        <div class="card-body">
+                            <h6 class="card-title">Deleted Students</h6>
+                            <h3>{{ card_stats.deleted_students_count }}</h3>
+                        </div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-md-3 mb-3">
                 <a href="{% url 'report_ocr' %}" class="tile-link">
                     <div class="card bg-info text-white">
                         <div class="card-body">

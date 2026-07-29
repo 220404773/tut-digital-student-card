@@ -117,7 +117,25 @@
     <main>
         {% block content %}{% endblock %}
     </main>
-    
+
+    {% if user.is_authenticated %}
+        <div class="modal fade" id="idle-timeout-modal" tabindex="-1" aria-labelledby="idle-timeout-title" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="idle-timeout-title"><i class="fas fa-clock"></i> Still there?</h5>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-0">You've been inactive for a while. For your account's security, you'll be signed out in <strong><span id="idle-timeout-countdown">120</span>s</strong> unless you stay signed in.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-primary" id="idle-timeout-extend">Stay signed in</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
     <!-- Footer -->
     <footer class="mt-5" style="flex-shrink: 0;">
         <div class="container text-center">
@@ -204,5 +222,67 @@
             });
         }
     </script>
+
+    {% if user.is_authenticated %}
+    <script>
+        (function () {
+            // How long (seconds) is actually left on the session right now -
+            // SESSION_SAVE_EVERY_REQUEST means this number is fresh as of
+            // this page load, not counted from login time.
+            var expiresIn = {{ request.session.get_expiry_age }};
+            var warningLead = 120; // show the "still there?" modal 2 minutes before expiry
+            var warnTimer, logoutTimer, countdownTimer;
+            var modalEl = document.getElementById('idle-timeout-modal');
+            var countdownEl = document.getElementById('idle-timeout-countdown');
+            var extendBtn = document.getElementById('idle-timeout-extend');
+            var modal = modalEl ? new bootstrap.Modal(modalEl) : null;
+
+            function clearTimers() {
+                clearTimeout(warnTimer);
+                clearTimeout(logoutTimer);
+                clearInterval(countdownTimer);
+            }
+
+            function scheduleTimers(seconds) {
+                clearTimers();
+                var warnIn = Math.max(0, (seconds - warningLead)) * 1000;
+                warnTimer = setTimeout(showWarning, warnIn);
+                logoutTimer = setTimeout(forceLogout, seconds * 1000);
+            }
+
+            function showWarning() {
+                if (!modal) return;
+                var remaining = warningLead;
+                countdownEl.textContent = remaining;
+                modal.show();
+                countdownTimer = setInterval(function () {
+                    remaining -= 1;
+                    countdownEl.textContent = Math.max(0, remaining);
+                    if (remaining <= 0) {
+                        clearInterval(countdownTimer);
+                    }
+                }, 1000);
+            }
+
+            function forceLogout() {
+                window.location.href = "{% url 'logout' %}?reason=idle";
+            }
+
+            if (extendBtn) {
+                extendBtn.addEventListener('click', function () {
+                    fetch("{% url 'session_keepalive' %}", { credentials: 'same-origin' })
+                        .then(function (response) { return response.json(); })
+                        .then(function (data) {
+                            if (modal) modal.hide();
+                            scheduleTimers(data.expires_in);
+                        })
+                        .catch(forceLogout);
+                });
+            }
+
+            scheduleTimers(expiresIn);
+        })();
+    </script>
+    {% endif %}
 </body>
 </html>

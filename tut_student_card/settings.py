@@ -25,6 +25,17 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = 60 * 60 * 24 * 7  # 1 week to start; raise once confirmed working
 
+# Idle session timeout: 20 minutes of inactivity signs a student out
+# automatically - within the 15-30 minute range typical for a system
+# handling personal student data (banking tends tighter, ~5-15 min; general
+# authenticated apps looser, 15-30 min). SESSION_SAVE_EVERY_REQUEST makes
+# this a *rolling* idle timeout rather than a fixed one: the expiry resets
+# on every authenticated request, so it only fires after real inactivity,
+# not a fixed time after login. The client-side warning/extend prompt in
+# base.html reads this same value via request.session.get_expiry_age().
+SESSION_COOKIE_AGE = config('SESSION_COOKIE_AGE', default=20 * 60, cast=int)
+SESSION_SAVE_EVERY_REQUEST = True
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

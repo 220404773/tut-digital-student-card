@@ -42,3 +42,31 @@ class StudentUser(AbstractUser):
     
     def get_full_name_display(self):
         return f"{self.first_name} {self.last_name}"
+
+
+class DeletedStudentLog(models.Model):
+    """Snapshot of a student's identifying info, captured at the moment
+    they're deleted from Django admin. Deleting a StudentUser cascades and
+    removes their StudentCard/CardActivity/metrics rows too - without this,
+    there would be no record a student ever existed once that happens.
+    Written explicitly by StudentUserAdmin.delete_model()/delete_queryset()
+    (the only two places a student is ever deleted in this app), not by a
+    signal, so "who deleted this" is captured reliably from the admin
+    request rather than guessed at.
+    """
+    student_number = models.CharField(max_length=20)
+    full_name = models.CharField(max_length=255)
+    email = models.EmailField()
+    was_verified = models.BooleanField()
+    had_card = models.BooleanField()
+    card_number = models.CharField(max_length=20, blank=True, default='')
+    deleted_at = models.DateTimeField(auto_now_add=True)
+    deleted_by = models.ForeignKey(
+        StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
+
+    class Meta:
+        ordering = ['-deleted_at']
+
+    def __str__(self):
+        return f"{self.full_name} ({self.student_number}) - deleted {self.deleted_at}"

@@ -5,7 +5,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
-from .models import StudentUser
+from .models import StudentUser, DeletedStudentLog
 from .views import delete_registration_proof
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
@@ -81,6 +81,30 @@ class StudentUserAdmin(UserAdmin):
         if failed:
             message += f' Failed to issue a card for {failed} student(s).'
         self.message_user(request, message)
+
+    def _log_deletion(self, obj, deleted_by):
+        # Deleting a StudentUser cascades - their StudentCard, CardActivity,
+        # and metrics rows all disappear with it. Capture a snapshot before
+        # that happens, or there'd be no record the student ever existed.
+        card = StudentCard.objects.filter(user=obj).first()
+        DeletedStudentLog.objects.create(
+            student_number=obj.student_number,
+            full_name=obj.get_full_name_display(),
+            email=obj.email,
+            was_verified=obj.is_verified,
+            had_card=card is not None,
+            card_number=card.card_number if card else '',
+            deleted_by=deleted_by,
+        )
+
+    def delete_model(self, request, obj):
+        self._log_deletion(obj, request.user)
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        for obj in queryset:
+            self._log_deletion(obj, request.user)
+        super().delete_queryset(request, queryset)
 
     def save_model(self, request, obj, form, change):
         # Staff+superuser accounts aren't real students - give them a

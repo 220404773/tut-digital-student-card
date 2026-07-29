@@ -8,7 +8,7 @@ from django.http import FileResponse, HttpResponse, JsonResponse
 from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from datetime import timedelta
-from accounts.models import StudentUser
+from accounts.models import StudentUser, DeletedStudentLog
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import get_card_display_data, build_card_verification_url
 from .google_wallet import build_google_wallet_save_url
@@ -288,6 +288,7 @@ def performance_dashboard(request):
         # took the action, not how many cards currently sit in that state.
         'revoked_count': CardActivity.objects.filter(activity_type='revoked').count(),
         'reissued_count': CardActivity.objects.filter(activity_type='reissued').count(),
+        'deleted_students_count': DeletedStudentLog.objects.count(),
     }
 
     # Site traffic
@@ -409,6 +410,18 @@ def report_card_activity(request):
     return render(request, 'cards/report_card_activity.html', {
         'activities': activities[:500],
         'title': titles.get(filter_type, 'All Card Activity'),
+    })
+
+
+@staff_member_required(login_url='login')
+def report_deleted_students(request):
+    """Staff-facing record of every deleted student account. The row itself
+    is gone the moment StudentUserAdmin deletes it (cascades away the card,
+    activity log, everything) - this reads the snapshot captured at that
+    moment instead (see accounts/admin.py:_log_deletion)."""
+    deleted = DeletedStudentLog.objects.select_related('deleted_by').order_by('-deleted_at')
+    return render(request, 'cards/report_deleted_students.html', {
+        'deleted': deleted[:500],
     })
 
 

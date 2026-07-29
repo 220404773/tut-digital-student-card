@@ -17,6 +17,7 @@ urlpatterns = [
     path('signup/preview-proof/', views.preview_registration_proof, name='preview_registration_proof'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    path('session-keepalive/', views.session_keepalive, name='session_keepalive'),
     path('profile/', views.profile, name='profile'),
     path('search/', views.user_search, name='user_search'),
     path('student/<int:student_id>/', views.student_detail, name='student_detail'),

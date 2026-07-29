@@ -522,13 +522,29 @@ def login_view(request):
     return render(request, 'accounts/login.html', {'form': form})
 
 
-@login_required(login_url='login')
 def logout_view(request):
     """
-    Handle user logout.
+    Handle user logout. Deliberately not @login_required - the idle-timeout
+    modal in base.html navigates here once the client-side timer expires,
+    which can be after the session has already expired server-side too;
+    logout() on an already-anonymous request is a harmless no-op, and this
+    way the "signed out due to inactivity" message still shows either way.
     """
     logout(request)
+    if request.GET.get('reason') == 'idle':
+        messages.info(request, "You've been signed out after a period of inactivity.")
     return redirect('home')
+
+
+@login_required(login_url='login')
+def session_keepalive(request):
+    """Hit by the idle-timeout warning modal's "Stay signed in" button.
+    Doesn't need to do anything itself - SESSION_SAVE_EVERY_REQUEST means
+    just being a logged-in request resets the session's expiry clock.
+    Returns the fresh expiry so the client can restart its own timers
+    without a full page reload.
+    """
+    return JsonResponse({'expires_in': request.session.get_expiry_age()})
 
 
 @login_required(login_url='login')
