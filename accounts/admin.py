@@ -5,7 +5,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
-from django.urls import path, reverse
+from django.urls import path, reverse, reverse_lazy
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
 from .models import StudentUser, DeletedStudentLog
@@ -200,3 +200,8 @@ class StudentUserAdmin(UserAdmin):
 
 admin.site.register(StudentUser, StudentUserAdmin)
 admin.site.unregister(Group)
+
+# The "View site" link in the admin header (admin/base.html's {{ site_url }})
+# defaults to "/" - staff using this admin have no reason to land on the
+# public homepage, so send it straight to the reporting dashboard instead.
+admin.site.site_url = reverse_lazy('performance_dashboard')
