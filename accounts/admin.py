@@ -3,6 +3,9 @@ import re
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
+from django.http import HttpResponseNotAllowed
+from django.shortcuts import get_object_or_404, redirect
+from django.urls import path, reverse
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
 from .models import StudentUser, DeletedStudentLog
@@ -26,20 +29,51 @@ class StudentUserAdmin(UserAdmin):
         ('Registration', {'fields': ('registration_proof', 'is_verified', 'registration_end_date')}),
     )
     actions = ['revoke_card_action', 'reissue_card_action']
+    # "View on site" normally links to the object's own get_absolute_url()
+    # (StudentUser has none) - point it at the admin reporting dashboard
+    # instead, since that's the natural "site" a staff member editing a
+    # student wants to jump to from here.
+    view_on_site = lambda self, obj: reverse('performance_dashboard')
+
+    def _revoke_single_card(self, student, performed_by):
+        """Returns True if the student had a card to revoke."""
+        card = StudentCard.objects.filter(user=student).first()
+        if not card:
+            return False
+        card.status = 'revoked'
+        card.save()
+        CardActivity.objects.create(student_card=card, activity_type='revoked', performed_by=performed_by)
+        return True
+
+    def _reissue_single_card(self, student, request):
+        """Returns (reissued, newly_issued, failed) - exactly one is True."""
+        card = StudentCard.objects.filter(user=student).first()
+        if not card:
+            # No card yet - issue one the same way OCR/manual verification does,
+            # rather than silently doing nothing.
+            try:
+                generate_student_card(student, request)
+                return False, True, False
+            except Exception:
+                return False, False, True
+
+        # The new QR filename is based on the new card number, so it won't
+        # overwrite the old one - without deleting it explicitly, every
+        # reissue would leave the previous QR image orphaned in storage forever.
+        old_qr_code = card.qr_code
+        card.card_number = generate_unique_card_number(student)
+        card.status = 'active'
+        card.save()
+        generate_qr_code_for_card(card, request)
+        if old_qr_code:
+            old_qr_code.storage.delete(old_qr_code.name)
+        CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
+        return True, False, False
 
     @admin.action(description='Revoke digital card')
     def revoke_card_action(self, request, queryset):
-        revoked = 0
-        skipped = 0
-        for student in queryset:
-            card = StudentCard.objects.filter(user=student).first()
-            if not card:
-                skipped += 1
-                continue
-            card.status = 'revoked'
-            card.save()
-            CardActivity.objects.create(student_card=card, activity_type='revoked', performed_by=request.user)
-            revoked += 1
+        revoked = sum(1 for student in queryset if self._revoke_single_card(student, request.user))
+        skipped = queryset.count() - revoked
 
         message = f'Revoked {revoked} card(s).'
         if skipped:
@@ -48,39 +82,55 @@ class StudentUserAdmin(UserAdmin):
 
     @admin.action(description='Reissue digital card (new card number + QR code)')
     def reissue_card_action(self, request, queryset):
-        reissued = 0
-        newly_issued = 0
-        failed = 0
+        reissued = newly_issued = failed = 0
         for student in queryset:
-            card = StudentCard.objects.filter(user=student).first()
-            if not card:
-                # No card yet - issue one the same way OCR/manual verification does,
-                # rather than silently skipping the student.
-                try:
-                    generate_student_card(student, request)
-                    newly_issued += 1
-                except Exception as e:
-                    failed += 1
-                continue
-
-            # The new QR filename is based on the new card number, so it
-            # won't overwrite the old one - without deleting it explicitly,
-            # every reissue would leave the previous QR image orphaned in
-            # storage forever.
-            old_qr_code = card.qr_code
-            card.card_number = generate_unique_card_number(student)
-            card.status = 'active'
-            card.save()
-            generate_qr_code_for_card(card, request)
-            if old_qr_code:
-                old_qr_code.storage.delete(old_qr_code.name)
-            CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
-            reissued += 1
+            r, n, f = self._reissue_single_card(student, request)
+            reissued += r
+            newly_issued += n
+            failed += f
 
         message = f'Reissued {reissued} card(s), newly issued {newly_issued} card(s).'
         if failed:
             message += f' Failed to issue a card for {failed} student(s).'
         self.message_user(request, message)
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                '<int:student_id>/revoke-card/',
+                self.admin_site.admin_view(self.revoke_card_view),
+                name='accounts_studentuser_revoke_card',
+            ),
+            path(
+                '<int:student_id>/reissue-card/',
+                self.admin_site.admin_view(self.reissue_card_view),
+                name='accounts_studentuser_reissue_card',
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def revoke_card_view(self, request, student_id):
+        if request.method != 'POST':
+            return HttpResponseNotAllowed(['POST'])
+        student = get_object_or_404(StudentUser, pk=student_id)
+        if self._revoke_single_card(student, request.user):
+            self.message_user(request, f"Revoked {student.get_full_name_display()}'s digital card.")
+        else:
+            self.message_user(request, f'{student.get_full_name_display()} has no card to revoke.', level=messages.WARNING)
+        return redirect('admin:accounts_studentuser_change', student.pk)
+
+    def reissue_card_view(self, request, student_id):
+        if request.method != 'POST':
+            return HttpResponseNotAllowed(['POST'])
+        student = get_object_or_404(StudentUser, pk=student_id)
+        reissued, newly_issued, failed = self._reissue_single_card(student, request)
+        if reissued:
+            self.message_user(request, f"Reissued {student.get_full_name_display()}'s digital card (new card number and QR code).")
+        elif newly_issued:
+            self.message_user(request, f'{student.get_full_name_display()} had no card yet - issued one.')
+        else:
+            self.message_user(request, f"Couldn't issue a card for {student.get_full_name_display()}.", level=messages.ERROR)
+        return redirect('admin:accounts_studentuser_change', student.pk)
 
     def _log_deletion(self, obj, deleted_by):
         # Deleting a StudentUser cascades - their StudentCard, CardActivity,
