@@ -1,16 +1,20 @@
 import functools
 
 from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.admin.views.decorators import staff_member_required
 from django_ratelimit.decorators import ratelimit
-from django.http import FileResponse, HttpResponse, JsonResponse
+from django.http import FileResponse, HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
+from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import StudentUser, DeletedStudentLog
+from accounts.views import split_full_name
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
-from .utils import get_card_display_data, build_card_verification_url
+from .utils import get_card_display_data, build_card_verification_url, generate_student_card
 from .google_wallet import build_google_wallet_save_url
 import qrcode
 
@@ -423,6 +427,67 @@ def report_deleted_students(request):
     return render(request, 'cards/report_deleted_students.html', {
         'deleted': deleted[:500],
     })
+
+
+@staff_member_required(login_url='login')
+def reissue_deleted_student(request, log_id):
+    """Recreates a deleted student's account from the snapshot captured at
+    deletion time, and issues them a fresh card - the actual StudentUser row
+    (and its old card/QR code) is long gone, so this is a genuine recreate,
+    not a literal "undo delete". The new account gets an unusable password;
+    a set-password email (the same flow/templates as ordinary password
+    reset) is how the student actually gets back in.
+    """
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    entry = get_object_or_404(DeletedStudentLog, pk=log_id)
+
+    if entry.restored_at:
+        messages.warning(request, f'{entry.full_name} was already restored on {entry.restored_at:%Y-%m-%d %H:%M}.')
+        return redirect('report_deleted_students')
+
+    if StudentUser.objects.filter(Q(student_number=entry.student_number) | Q(email__iexact=entry.email)).exists():
+        messages.error(request, f'An account with student number {entry.student_number} or email {entry.email} already exists - cannot restore.')
+        return redirect('report_deleted_students')
+
+    first_name, last_name = split_full_name(entry.full_name)
+    student = StudentUser.objects.create(
+        email=entry.email,
+        username=entry.email,
+        student_number=entry.student_number,
+        first_name=first_name,
+        last_name=last_name,
+        is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
+    )
+    # A random throwaway password, not set_unusable_password(): Django's
+    # PasswordResetForm.get_users() explicitly excludes accounts with an
+    # unusable password from ever receiving a reset email, which would
+    # silently strand the student with no way back in.
+    student.set_password(get_random_string(32))
+    student.save()
+
+    try:
+        generate_student_card(student, request)
+        card = StudentCard.objects.filter(user=student).first()
+        if card:
+            CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
+    except Exception as e:
+        messages.warning(request, f'Account restored, but card generation failed: {str(e)}')
+
+    reset_form = PasswordResetForm(data={'email': student.email})
+    if reset_form.is_valid():
+        reset_form.save(
+            request=request,
+            email_template_name='accounts/password_reset_email.html',
+            subject_template_name='accounts/password_reset_subject.txt',
+        )
+
+    entry.restored_at = timezone.now()
+    entry.save()
+
+    messages.success(request, f'Restored {student.get_full_name_display()} with a new card - a set-password email has been sent to {student.email}.')
+    return redirect('report_deleted_students')
 
 
 @staff_member_required(login_url='login')

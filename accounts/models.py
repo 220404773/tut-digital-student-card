@@ -64,6 +64,10 @@ class DeletedStudentLog(models.Model):
     deleted_by = models.ForeignKey(
         StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
     )
+    # Set once staff recreate this student's account from this snapshot
+    # (see cards/views.py:reissue_deleted_student) - guards the report from
+    # offering "Reissue" twice for the same entry.
+    restored_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-deleted_at']

@@ -23,6 +23,7 @@
                     <th>Card Number</th>
                     <th>Deleted By</th>
                     <th>Deleted At</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -42,10 +43,21 @@
                         <td>{{ entry.card_number|default:"-" }}</td>
                         <td>{{ entry.deleted_by.get_full_name_display|default:"-" }}</td>
                         <td>{{ entry.deleted_at|date:"Y-m-d H:i:s" }}</td>
+                        <td>
+                            {% if entry.restored_at %}
+                                <span class="badge bg-secondary">Restored {{ entry.restored_at|date:"Y-m-d" }}</span>
+                            {% else %}
+                                <form method="post" action="{% url 'reissue_deleted_student' entry.pk %}"
+                                      onsubmit="return confirm('Recreate {{ entry.full_name }}\'s account with a new card, and email them a link to set a new password?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm" style="background:#6f42c1; color:#fff;">Reissue</button>
+                                </form>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="8" class="text-center text-muted">No students have been deleted</td>
+                        <td colspan="9" class="text-center text-muted">No students have been deleted</td>
                     </tr>
                 {% endfor %}
             </tbody>
