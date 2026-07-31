@@ -59,88 +59,79 @@
             {% if student_card %}
                 <h5 class="mb-2">Your Digital Student Card</h5>
 
-                <div class="student-card mb-3">
-                    <div class="student-card-content">
-                        <div class="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                                <small style="opacity: 0.9;">TSHWANE UNIVERSITY OF TECHNOLOGY</small>
-                                <h4 class="mb-0" style="font-weight: bold;">Digital Student ID</h4>
-                            </div>
-                            <span class="badge bg-light text-dark">{{ student_card.status|upper }}</span>
-                        </div>
-
-                        <hr style="border-color: rgba(255,255,255,0.3); margin: 0.5rem 0;">
-
-                        <div class="d-flex align-items-center gap-3 mb-2">
-                            {% if user.profile_picture %}
-                                <img src="{{ user.profile_picture.url }}" alt="Student photo"
-                                     class="rounded-circle" style="width: 56px; height: 56px; object-fit: cover; border: 2px solid rgba(255,255,255,0.6);">
-                            {% else %}
-                                <div class="rounded-circle d-flex align-items-center justify-content-center"
-                                     style="width: 56px; height: 56px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.6);">
-                                    <i class="fas fa-user" style="font-size: 1.5rem; opacity: 0.85;"></i>
-                                </div>
-                            {% endif %}
-                            <div>
-                                <h4 class="mb-1" style="font-weight: bold;">{{ user.get_full_name_display }}</h4>
-                                <p class="h6 mb-0">{{ user.student_number }}</p>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-6">
-                                <small style="opacity: 0.9;">Card Number</small>
-                                <p class="mb-0" style="font-size: 0.85rem;">{{ student_card.card_number }}</p>
-                            </div>
-                            <div class="col-6 text-end">
-                                <small style="opacity: 0.9;">Valid Until</small>
-                                <p class="mb-0" style="font-size: 0.85rem;">{{ student_card.expiry_date|date:"M d, Y" }}</p>
-                            </div>
-                        </div>
-
-                        <div class="d-flex gap-3 mt-2">
-                            <div>
-                                <small style="opacity: 0.9;">Issued</small>
-                                <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.issue_date }}</p>
-                            </div>
-                            <div>
-                                <small style="opacity: 0.9;">Email</small>
-                                <p class="mb-0" style="font-size: 0.85rem;">{{ user.email }}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {% if google_wallet_save_url %}
-                    <div class="d-grid mb-2">
-                        <a href="{{ google_wallet_save_url }}" class="btn w-100" style="background:#000; color:#fff;">
-                            <i class="fas fa-wallet"></i> Add to Google Wallet
-                        </a>
-                    </div>
-                {% endif %}
-
                 <div class="row mb-3">
+                    <div class="{% if card_data.qr_code_url %}col-md-8{% else %}col-12{% endif %}">
+                        <div class="student-card h-100">
+                            <div class="student-card-content">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <small style="opacity: 0.9;">TSHWANE UNIVERSITY OF TECHNOLOGY</small>
+                                        <h4 class="mb-0" style="font-weight: bold;">Digital Student ID</h4>
+                                    </div>
+                                    <span class="badge bg-light text-dark">{{ student_card.status|upper }}</span>
+                                </div>
+
+                                <hr style="border-color: rgba(255,255,255,0.3); margin: 0.5rem 0;">
+
+                                <div class="d-flex align-items-center gap-3 mb-2">
+                                    {% if user.profile_picture %}
+                                        <img src="{{ user.profile_picture.url }}" alt="Student photo"
+                                             class="rounded-circle" style="width: 56px; height: 56px; object-fit: cover; border: 2px solid rgba(255,255,255,0.6);">
+                                    {% else %}
+                                        <div class="rounded-circle d-flex align-items-center justify-content-center"
+                                             style="width: 56px; height: 56px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.6);">
+                                            <i class="fas fa-user" style="font-size: 1.5rem; opacity: 0.85;"></i>
+                                        </div>
+                                    {% endif %}
+                                    <div>
+                                        <h4 class="mb-1" style="font-weight: bold;">{{ user.get_full_name_display }}</h4>
+                                        <p class="h6 mb-0">{{ user.student_number }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-2">
+                                    <div class="col-6">
+                                        <small style="opacity: 0.9;">Card Number</small>
+                                        <p class="mb-0" style="font-size: 0.85rem;">{{ student_card.card_number }}</p>
+                                    </div>
+                                    <div class="col-6 text-end">
+                                        <small style="opacity: 0.9;">Valid Until</small>
+                                        <p class="mb-0" style="font-size: 0.85rem;">{{ student_card.expiry_date|date:"M d, Y" }}</p>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex gap-3 mt-2">
+                                    <div>
+                                        <small style="opacity: 0.9;">Issued</small>
+                                        <p class="mb-0" style="font-size: 0.85rem;">{{ card_data.issue_date }}</p>
+                                    </div>
+                                    <div>
+                                        <small style="opacity: 0.9;">Email</small>
+                                        <p class="mb-0" style="font-size: 0.85rem;">{{ user.email }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     {% if card_data.qr_code_url %}
-                        <div class="col-md-5">
+                        <div class="col-md-4">
                             <div class="card h-100">
-                                <div class="card-body text-center py-3">
-                                    <img src="{{ card_data.qr_code_url }}" alt="QR Code" class="img-fluid" style="max-width: 160px;">
+                                <div class="card-body text-center py-3 d-flex flex-column justify-content-center">
+                                    <img src="{{ card_data.qr_code_url }}" alt="QR Code" class="img-fluid mx-auto" style="max-width: 160px;">
                                     <p class="text-muted mt-2 mb-0"><small>Show this for quick verification at campus gates</small></p>
                                 </div>
                             </div>
                         </div>
                     {% endif %}
-                    <div class="{% if card_data.qr_code_url %}col-md-7{% else %}col-12{% endif %}">
-                        <div class="d-grid gap-2 h-100">
-                            <a href="{% url 'view_card' %}" class="btn btn-outline-primary">
-                                <i class="fas fa-id-card"></i> View Full Card
-                            </a>
-                            <a href="{% url 'download_qr' %}" class="btn btn-outline-primary">
-                                <i class="fas fa-download"></i> Download QR Code
-                            </a>
-                        </div>
-                    </div>
                 </div>
+
+                {% if google_wallet_save_url %}
+                    <div class="d-grid mb-3">
+                        <a href="{{ google_wallet_save_url }}" class="btn w-100" style="background:#000; color:#fff;">
+                            <i class="fas fa-wallet"></i> Add to Google Wallet
+                        </a>
+                    </div>
+                {% endif %}
 
             {% else %}
                 <div class="alert alert-info">
