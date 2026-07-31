@@ -44,11 +44,17 @@ def dashboard(request):
     except StudentCard.DoesNotExist:
         student_card = None
 
+    google_wallet_save_url = None
+    if student_card:
+        verification_url = build_card_verification_url(student_card.card_number, request)
+        google_wallet_save_url = build_google_wallet_save_url(student_card, verification_url)
+
     context = {
         'student_card': student_card,
         'is_verified': user.is_verified,
         'card_data': get_card_display_data(student_card) if student_card else None,
         'confirmation_cooldown_remaining': confirmation_cooldown_remaining(user) if not user.email_confirmed else 0,
+        'google_wallet_save_url': google_wallet_save_url,
     }
     return render(request, 'cards/dashboard.html', context)
 
@@ -120,52 +126,6 @@ def download_qr_code(request, format_type='png'):
         response['Content-Disposition'] = f'attachment; filename="student_card_qr_{student_card.card_number}.png"'
         qr_image.save(response, 'PNG')
         return response
-
-
-@student_required
-def card_activity_log(request):
-    """
-    View activity log for student's card.
-    """
-    user = request.user
-    student_card = get_object_or_404(StudentCard, user=user)
-    
-    activities = CardActivity.objects.filter(student_card=student_card).order_by('-timestamp')[:50]
-    
-    context = {
-        'student_card': student_card,
-        'activities': activities,
-    }
-    return render(request, 'cards/activity_log.html', context)
-
-
-@student_required
-def verify_card(request):
-    """
-    Display full card details for visual verification (security check).
-    """
-    user = request.user
-    student_card = get_object_or_404(StudentCard, user=user)
-    
-    # Log verification activity
-    CardActivity.objects.create(
-        student_card=student_card,
-        activity_type='verified',
-        ip_address=get_client_ip(request),
-        user_agent=request.META.get('HTTP_USER_AGENT', '')
-    )
-    
-    card_data = get_card_display_data(student_card)
-    
-    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return JsonResponse(card_data)
-    
-    context = {
-        'card': student_card,
-        'card_data': card_data,
-        'user': user,
-    }
-    return render(request, 'cards/verify.html', context)
 
 
 @ratelimit(key='ip', rate='60/m', method='GET', block=False)
