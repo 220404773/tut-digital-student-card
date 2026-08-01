@@ -323,15 +323,21 @@ def signup(request):
             if ocr_result:
                 _t_ocr_metrics = timezone.now()
                 try:
+                    confidence_percent = ocr_result.get('confidence_score', 0) * 100
                     OCRMetrics.objects.create(
                         user=user,
                         ocr_start_time=ocr_start_time,
                         ocr_end_time=ocr_end_time,
                         ocr_duration_seconds=ocr_duration,
-                        ocr_confidence_score=ocr_result.get('confidence_score', 0) * 100,
+                        ocr_confidence_score=confidence_percent,
                         extracted_student_number=ocr_result.get('student_number'),
                         extracted_full_name=ocr_result.get('full_name'),
                         is_accurate=user.is_verified,
+                        # Accurate is >=80% (the auto-verify threshold, see
+                        # is_verified above). 75-79% is close enough that a
+                        # human should glance at it rather than write it off
+                        # outright; below 75% is treated as a clean failure.
+                        manual_correction_required=75 <= confidence_percent < 80,
                         document_quality_score=ocr_result.get('quality_score', 0) * 100,
                         document_classification_confidence=ocr_result.get('document_classification_confidence', 0) * 100,
                     )
