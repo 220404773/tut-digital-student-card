@@ -367,7 +367,6 @@
                                     <th>Confidence</th>
                                     <th>Duration</th>
                                     <th>Status</th>
-                                    <th>Quality</th>
                                     <th>Timestamp</th>
                                 </tr>
                             </thead>
@@ -394,7 +393,6 @@
                                                 <span class="badge bg-danger"><i class="fas fa-times"></i> Inaccurate</span>
                                             {% endif %}
                                         </td>
-                                        <td>{{ ocr.document_quality_score|floatformat:1 }}%</td>
                                         <td>{{ ocr.created_at|date:"Y-m-d H:i:s" }}</td>
                                     </tr>
                                 {% empty %}
