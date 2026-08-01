@@ -513,7 +513,7 @@ def staff_student_detail(request, user_id):
     duplicating a second edit UI."""
     student = get_object_or_404(StudentUser, pk=user_id)
     student_card = StudentCard.objects.filter(user=student).first()
-    activities = CardActivity.objects.filter(student_card=student_card).order_by('-timestamp')[:20] if student_card else []
+    activities = CardActivity.objects.filter(student_card=student_card).select_related('performed_by').order_by('-timestamp')[:20] if student_card else []
 
     return render(request, 'cards/staff_student_detail.html', {
         'student': student,

@@ -29,9 +29,6 @@ class StudentUser(AbstractUser):
     email_confirmed = models.BooleanField(default=False)
     email_confirmed_at = models.DateTimeField(null=True, blank=True)
 
-    # Auto-extracted from document
-    ocr_student_number = models.CharField(max_length=20, null=True, blank=True)
-    ocr_full_name = models.CharField(max_length=255, null=True, blank=True)
     registration_end_date = models.DateField(null=True, blank=True)
     
     class Meta:

@@ -136,14 +136,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-
-// Copy text to clipboard
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text);
-    alert('Copied!');
-}
-
-// Print card
-function printCard() {
-    window.print();
-}

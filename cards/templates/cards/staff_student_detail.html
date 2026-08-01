@@ -88,17 +88,24 @@
                     <div class="table-responsive">
                         <table class="table table-sm mb-0">
                             <thead class="table-light">
-                                <tr><th>Type</th><th>Timestamp</th><th>IP</th></tr>
+                                <tr><th>Type</th><th>By</th><th>Timestamp</th><th>IP</th></tr>
                             </thead>
                             <tbody>
                                 {% for activity in activities %}
                                     <tr>
                                         <td>{{ activity.get_activity_type_display }}</td>
+                                        <td>
+                                            {% if activity.performed_by %}
+                                                <span class="badge bg-secondary">Admin</span>
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
                                         <td>{{ activity.timestamp|date:"Y-m-d H:i:s" }}</td>
                                         <td>{{ activity.ip_address|default:"-" }}</td>
                                     </tr>
                                 {% empty %}
-                                    <tr><td colspan="3" class="text-center text-muted">No activity yet</td></tr>
+                                    <tr><td colspan="4" class="text-center text-muted">No activity yet</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>

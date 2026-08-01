@@ -275,8 +275,6 @@ def signup(request):
                         if not user.email and ocr_result.get('email'):
                             user.email = ocr_result.get('email')
                         user.is_verified = True
-                        user.ocr_student_number = ocr_result.get('student_number')
-                        user.ocr_full_name = ocr_result.get('full_name')
                         if not user.student_number and ocr_result.get('student_number'):
                             user.student_number = ocr_result.get('student_number')
                         if ocr_result.get('full_name'):
