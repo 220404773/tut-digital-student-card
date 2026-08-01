@@ -50,7 +50,7 @@
                                 <form method="post" action="{% url 'reissue_deleted_student' entry.pk %}"
                                       onsubmit="return confirm('Recreate {{ entry.full_name }}\'s account with a new card, and email them a link to set a new password?');">
                                     {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm" style="background:#6f42c1; color:#fff;">Reissue</button>
+                                    <button type="submit" class="btn btn-sm" style="background:#198754; color:#fff;">Reissue</button>
                                 </form>
                             {% endif %}
                         </td>
