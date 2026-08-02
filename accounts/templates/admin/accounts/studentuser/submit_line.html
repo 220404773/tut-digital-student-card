@@ -1,6 +1,14 @@
 {% extends "admin/submit_line.html" %}
 
 {% block submit-row %}
+<style>
+    /* Django's own forms.css deliberately uppercases just the primary
+       submit-row button (.submit-row input.default) to make it stand out -
+       every other button in this row (Save and add another, Delete, our
+       Revoke/Reissue buttons) renders in normal case, so this made the
+       primary one visually inconsistent with the rest of the row. */
+    .submit-row input.default { text-transform: none; }
+</style>
 {{ block.super }}
 {% if original %}
     <form method="post" action="{% url 'admin:accounts_studentuser_revoke_card' original.pk %}" style="display:inline;"
