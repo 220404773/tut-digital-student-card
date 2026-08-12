@@ -636,6 +636,25 @@ def parse_registration_end_date(period):
     return None
 
 
+def registration_period_has_expired(end_date):
+    """True if a parsed registration end date is already in the past.
+    Shared by signup() and the self-service re-upload flow, both of which
+    need to reject a document whose registration period has already ended
+    rather than issuing/reactivating a card that's expired on arrival.
+    """
+    return end_date is not None and end_date < timezone.now().date()
+
+
+def registration_period_is_implausible(end_date):
+    """True if a parsed registration end date is more than a year out from
+    today (e.g. today 03 Jan 2026, end date 03 Jan 2027 or later) - a normal
+    TUT registration period doesn't run that long, so a date this far out is
+    far more likely an OCR/LLM misread (a mangled digit in the year) than a
+    real one. Same rejection treatment as an already-expired date.
+    """
+    return end_date is not None and end_date > timezone.now().date() + timedelta(days=365)
+
+
 def extract_pdf_text(pdf_path):
     """Extract selectable text from a PDF before falling back to OCR."""
     if fitz is None:

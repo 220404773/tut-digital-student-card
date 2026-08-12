@@ -41,6 +41,7 @@ def dashboard(request):
     user = request.user
     try:
         student_card = StudentCard.objects.get(user=user)
+        student_card.refresh_status()
     except StudentCard.DoesNotExist:
         student_card = None
 
@@ -66,7 +67,8 @@ def view_card(request):
     """
     user = request.user
     student_card = get_object_or_404(StudentCard, user=user)
-    
+    student_card.refresh_status()
+
     # Log activity
     CardActivity.objects.create(
         student_card=student_card,
@@ -143,6 +145,7 @@ def verify_card_public(request, card_number):
         return HttpResponse('Too many requests - please wait a moment and try again.', status=429)
 
     student_card = get_object_or_404(StudentCard, card_number=card_number)
+    student_card.refresh_status()
 
     CardActivity.objects.create(
         student_card=student_card,
@@ -253,6 +256,12 @@ def performance_dashboard(request):
         'revoked_count': CardActivity.objects.filter(activity_type='revoked').count(),
         'reissued_count': CardActivity.objects.filter(activity_type='reissued').count(),
         'deleted_students_count': DeletedStudentLog.objects.count(),
+        # Same definition report_expired_cards() uses: already-flipped
+        # 'expired' rows, plus 'active' rows nobody's read since their
+        # expiry_date passed (refresh_status() hasn't self-healed them yet).
+        'expired_cards_count': StudentCard.objects.filter(
+            Q(status='expired') | Q(status='active', expiry_date__lt=today)
+        ).count(),
     }
 
     # Site traffic
@@ -451,6 +460,31 @@ def reissue_deleted_student(request, log_id):
 
 
 @staff_member_required(login_url='login')
+def report_expired_cards(request):
+    """Staff-facing list of cards whose registration period has passed -
+    the soft-expire equivalent of the Deleted Students report (nothing is
+    removed, StudentCard.refresh_status() just flips status on the same
+    row). Catches both cards already flipped to 'expired' by a previous
+    read, and ones still sitting as 'active' that nobody's viewed since
+    their expiry_date passed - self-healing each on the way through so
+    this list is always accurate, not just whatever happened to be touched.
+    The Reissue button reuses the same admin action staff already use for
+    a lost/stolen card - the StudentUser row here is very much still alive,
+    unlike the Deleted Students case.
+    """
+    today = timezone.now().date()
+    expired_cards = StudentCard.objects.filter(
+        Q(status='expired') | Q(status='active', expiry_date__lt=today)
+    ).select_related('user').order_by('expiry_date')
+    for card in expired_cards:
+        card.refresh_status()
+
+    return render(request, 'cards/report_expired_cards.html', {
+        'expired_cards': expired_cards,
+    })
+
+
+@staff_member_required(login_url='login')
 def report_visits(request):
     """Drill-down behind the Website Visits tile."""
     all_visits = PageVisit.objects.order_by('-timestamp')
@@ -513,6 +547,8 @@ def staff_student_detail(request, user_id):
     duplicating a second edit UI."""
     student = get_object_or_404(StudentUser, pk=user_id)
     student_card = StudentCard.objects.filter(user=student).first()
+    if student_card:
+        student_card.refresh_status()
     activities = CardActivity.objects.filter(student_card=student_card).select_related('performed_by').order_by('-timestamp')[:20] if student_card else []
 
     return render(request, 'cards/staff_student_detail.html', {

@@ -14,6 +14,7 @@ urlpatterns = [
     path('reports/card-activity/', views.report_card_activity, name='report_card_activity'),
     path('reports/deleted-students/', views.report_deleted_students, name='report_deleted_students'),
     path('reports/deleted-students/<int:log_id>/reissue/', views.reissue_deleted_student, name='reissue_deleted_student'),
+    path('reports/expired-cards/', views.report_expired_cards, name='report_expired_cards'),
     path('reports/visits/', views.report_visits, name='report_visits'),
     path('reports/visitors/', views.report_visit_users, name='report_visit_users'),
     path('reports/visitors/<int:user_id>/', views.report_user_visits, name='report_user_visits'),

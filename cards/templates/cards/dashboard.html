@@ -18,6 +18,19 @@
         </div>
     {% endif %}
 
+    {% if student_card.status == 'expired' %}
+        <div class="alert alert-danger py-2 mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>
+                <i class="fas fa-exclamation-circle"></i>
+                <strong>Your digital student card has expired</strong> (registration period ended {{ student_card.expiry_date|date:"M d, Y" }}).
+                To reactivate it, upload your current proof of registration.
+            </span>
+            <a href="{% url 'reupload_proof' %}" class="btn btn-sm btn-dark">
+                <i class="fas fa-upload"></i> Reactivate Now
+            </a>
+        </div>
+    {% endif %}
+
     {% if not user.email_confirmed %}
         <div class="alert alert-warning py-2 mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span>

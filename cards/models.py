@@ -18,10 +18,26 @@ class StudentCard(models.Model):
     
     def __str__(self):
         return f"Card {self.card_number}"
-    
+
     def is_valid(self):
-        """Check if card is active and not expired."""
+        """Check if card is active. Does NOT itself check expiry_date - call
+        refresh_status() first wherever a card is actually read/displayed,
+        so an overdue card has already been soft-expired (status flipped to
+        'expired' on this same row - nothing deleted, everything about the
+        card and its history stays intact) before this is checked."""
         return self.status == 'active'
+
+    def refresh_status(self):
+        """Soft-expires this card if its expiry_date has passed - there's no
+        scheduled job at this project's scale, so this self-heals lazily
+        whenever the card is actually read (dashboard, My Card, the public
+        QR-scan page, the admin detail view). Never deletes or loses any
+        data, just flips status the same way a manual revoke does.
+        """
+        if self.status == 'active' and self.expiry_date and self.expiry_date < timezone.now().date():
+            self.status = 'expired'
+            self.save(update_fields=['status'])
+        return self.status
 
 
 class CardActivity(models.Model):
@@ -33,6 +49,7 @@ class CardActivity(models.Model):
         ('verified', 'Verified'),
         ('revoked', 'Revoked'),
         ('reissued', 'Reissued'),
+        ('reactivated', 'Reactivated'),
     ])
     timestamp = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)

@@ -19,8 +19,8 @@ from django.db import models
 from .models import StudentUser
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .tokens import email_confirmation_token
-from cards.models import StudentCard, SignupMetrics, OCRMetrics
-from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, link_recent_anonymous_visits, hash_uploaded_file
+from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
+from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, registration_period_has_expired, registration_period_is_implausible, link_recent_anonymous_visits, hash_uploaded_file
 
 OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 
@@ -274,6 +274,40 @@ def signup(request):
 
                         if not user.email and ocr_result.get('email'):
                             user.email = ocr_result.get('email')
+
+                        # Most important check in this whole branch: a
+                        # document can extract cleanly (high confidence,
+                        # every field present) while still being for a
+                        # registration period that's already over. Reject
+                        # it explicitly here, before is_verified is ever set
+                        # True - this is what stops a card from being
+                        # issued already-expired (see StudentCard.refresh_status()).
+                        registration_end_date = parse_registration_end_date(ocr_result.get('period'))
+                        if registration_period_has_expired(registration_end_date):
+                            user.is_verified = False
+                            messages.warning(
+                                request,
+                                f"This proof of registration expired on {registration_end_date:%d %b %Y}. "
+                                f"Please upload your current ({timezone.now().year}) proof of registration."
+                            )
+                            user.save()
+                            delete_registration_proof(user)
+                            return render(request, 'accounts/signup.html', {'form': form})
+                        if registration_period_is_implausible(registration_end_date):
+                            # Almost certainly a misread year (e.g. 2027
+                            # instead of 2026), not a real multi-year
+                            # registration - reject the same way rather than
+                            # trust a date this far out.
+                            user.is_verified = False
+                            messages.warning(
+                                request,
+                                f"The registration end date on this document ({registration_end_date:%d %b %Y}) "
+                                f"doesn't look right - please upload a clearer copy of your current proof of registration."
+                            )
+                            user.save()
+                            delete_registration_proof(user)
+                            return render(request, 'accounts/signup.html', {'form': form})
+
                         user.is_verified = True
                         if not user.student_number and ocr_result.get('student_number'):
                             user.student_number = ocr_result.get('student_number')
@@ -283,7 +317,7 @@ def signup(request):
                                 user.first_name = first_name
                             if not user.last_name and last_name:
                                 user.last_name = last_name
-                        user.registration_end_date = parse_registration_end_date(ocr_result.get('period'))
+                        user.registration_end_date = registration_end_date
 
                         messages.success(request, 'TUT Proof of Registration verified successfully!')
                     else:
@@ -486,6 +520,99 @@ def resend_confirmation_email(request):
     elif getattr(request, 'limited', False):
         messages.error(request, 'Too many resend attempts - please wait a while and try again.')
     return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+
+
+@login_required(login_url='login')
+@ratelimit(key='user', rate='10/h', method='POST', block=False)
+def reupload_proof(request):
+    """Lets an already-registered student upload a fresh proof of
+    registration to reactivate an expired card (or complete verification if
+    they never got one) - the self-service half of card expiry, the way a
+    corporate domain account lets you change your own password once it's
+    expired rather than needing IT to do it for you. Staff-side, the
+    equivalent action is the Reissue button on the Expired Cards report.
+    """
+    if request.user.is_staff:
+        return redirect('performance_dashboard')
+
+    if request.method != 'POST':
+        return render(request, 'accounts/reupload_proof.html')
+
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many attempts - please wait a while and try again.')
+        return redirect('reupload_proof')
+
+    registration_proof = request.FILES.get('registration_proof')
+    if not registration_proof:
+        messages.warning(request, 'Please choose a file to upload.')
+        return redirect('reupload_proof')
+
+    if registration_proof.size > 5242880:
+        messages.warning(request, 'File size exceeds 5MB limit.')
+        return redirect('reupload_proof')
+
+    ext = registration_proof.name.split('.')[-1].lower()
+    if ext not in CustomUserCreationForm.FILE_SIGNATURES:
+        messages.warning(request, 'Invalid file format. Allowed: PDF, JPG, PNG')
+        return redirect('reupload_proof')
+
+    registration_proof.seek(0)
+    header = registration_proof.read(8)
+    registration_proof.seek(0)
+    if not any(header.startswith(sig) for sig in CustomUserCreationForm.FILE_SIGNATURES[ext]):
+        messages.warning(request, 'This file does not look like a valid PDF, JPG, or PNG.')
+        return redirect('reupload_proof')
+
+    try:
+        ocr_result = process_registration_proof(registration_proof)
+    except Exception as e:
+        messages.warning(request, f'Could not process this document: {str(e)}. Please try again.')
+        return redirect('reupload_proof')
+
+    if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
+        messages.warning(request, 'This does not look like a valid TUT proof of registration. Please upload the correct document.')
+        return redirect('reupload_proof')
+
+    if not ocr_result or ocr_result.get('confidence_score', 0) < 0.8:
+        messages.warning(request, 'This document could not be verified with enough confidence. Please upload a clearer copy of your current proof of registration.')
+        return redirect('reupload_proof')
+
+    registration_end_date = parse_registration_end_date(ocr_result.get('period'))
+    if registration_period_has_expired(registration_end_date):
+        messages.warning(
+            request,
+            f"This proof of registration expired on {registration_end_date:%d %b %Y}. "
+            f"Please upload your current ({timezone.now().year}) proof of registration."
+        )
+        return redirect('reupload_proof')
+    if registration_period_is_implausible(registration_end_date):
+        messages.warning(
+            request,
+            f"The registration end date on this document ({registration_end_date:%d %b %Y}) doesn't look right - "
+            f"please upload a clearer copy of your current proof of registration."
+        )
+        return redirect('reupload_proof')
+
+    user = request.user
+    user.registration_end_date = registration_end_date
+    user.is_verified = True
+    user.save()
+
+    student_card = StudentCard.objects.filter(user=user).first()
+    if student_card:
+        student_card.expiry_date = registration_end_date
+        student_card.status = 'active'
+        student_card.save()
+        CardActivity.objects.create(student_card=student_card, activity_type='reactivated')
+        messages.success(request, 'Your digital student card has been reactivated!')
+    else:
+        try:
+            generate_student_card(user, request)
+            messages.success(request, 'Your digital student card has been generated!')
+        except Exception as e:
+            messages.error(request, f'Error generating card: {str(e)}')
+
+    return redirect('dashboard')
 
 
 @require_http_methods(['GET', 'POST'])

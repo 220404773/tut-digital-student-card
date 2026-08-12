@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}Expired Student Cards - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Expired Student Cards</h1>
+        <p class="lead">{{ expired_cards|length }} record{{ expired_cards|length|pluralize }} — nothing here has been deleted, only soft-expired</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <div class="table-responsive">
+        <table class="table table-hover table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th>
+                    <th>Student Number</th>
+                    <th>Card Number</th>
+                    <th>Expired On</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for card in expired_cards %}
+                    <tr>
+                        <td>{{ card.user.get_full_name_display }}</td>
+                        <td>{{ card.user.student_number }}</td>
+                        <td>{{ card.card_number }}</td>
+                        <td>{{ card.expiry_date|date:"Y-m-d" }}</td>
+                        <td>
+                            <form method="post" action="{% url 'admin:accounts_studentuser_reissue_card' card.user.id %}"
+                                  onsubmit="return confirm('Reissue a new card number and QR code for {{ card.user.get_full_name_display }}? Their old card number will stop working.');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm" style="background:#198754; color:#fff;">Reissue</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">No cards have expired</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Reports
+    </a>
+</div>
+{% endblock %}
