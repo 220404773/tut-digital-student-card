@@ -428,6 +428,7 @@ def reissue_deleted_student(request, log_id):
         first_name=first_name,
         last_name=last_name,
         is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
+        registration_end_date=entry.registration_end_date,
     )
     # A random throwaway password, not set_unusable_password(): Django's
     # PasswordResetForm.get_users() explicitly excludes accounts with an

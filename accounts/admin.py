@@ -149,6 +149,7 @@ class StudentUserAdmin(UserAdmin):
             was_verified=obj.is_verified,
             had_card=card is not None,
             card_number=card.card_number if card else '',
+            registration_end_date=obj.registration_end_date,
             deleted_by=deleted_by,
         )
 
