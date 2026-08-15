@@ -63,6 +63,11 @@ class StudentUserAdmin(UserAdmin):
         old_qr_code = card.qr_code
         card.card_number = generate_unique_card_number(student)
         card.status = 'active'
+        # Restore the expiry from the student's actual proof of registration,
+        # not whatever was already on the card - otherwise reissuing an
+        # expired card would leave expiry_date in the past and it would
+        # immediately flip back to 'expired' on the next refresh_status().
+        card.expiry_date = student.registration_end_date or card.expiry_date
         card.save()
         generate_qr_code_for_card(card, request)
         if old_qr_code:
