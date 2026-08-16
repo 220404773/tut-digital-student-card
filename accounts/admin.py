@@ -150,6 +150,7 @@ class StudentUserAdmin(UserAdmin):
             had_card=card is not None,
             card_number=card.card_number if card else '',
             registration_end_date=obj.registration_end_date,
+            was_email_confirmed=obj.email_confirmed,
             deleted_by=deleted_by,
         )
 

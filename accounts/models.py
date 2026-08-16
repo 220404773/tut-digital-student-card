@@ -58,6 +58,7 @@ class DeletedStudentLog(models.Model):
     had_card = models.BooleanField()
     card_number = models.CharField(max_length=20, blank=True, default='')
     registration_end_date = models.DateField(null=True, blank=True)
+    was_email_confirmed = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(auto_now_add=True)
     deleted_by = models.ForeignKey(
         StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'

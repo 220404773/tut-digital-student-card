@@ -429,6 +429,11 @@ def reissue_deleted_student(request, log_id):
         last_name=last_name,
         is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
         registration_end_date=entry.registration_end_date,
+        # The student already proved control of this mailbox before being
+        # deleted - restoring the account shouldn't make them prove it
+        # again, since it's the same email address either way.
+        email_confirmed=entry.was_email_confirmed,
+        email_confirmed_at=timezone.now() if entry.was_email_confirmed else None,
     )
     # A random throwaway password, not set_unusable_password(): Django's
     # PasswordResetForm.get_users() explicitly excludes accounts with an
