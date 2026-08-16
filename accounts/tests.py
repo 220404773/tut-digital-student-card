@@ -337,7 +337,7 @@ class EmailConfirmationTests(TestCase):
         url = reverse('confirm_email', args=[uid, 'bogus-token'])
 
         get_response = self.client.get(url)
-        self.assertContains(get_response, 'invalid or has already been used')
+        self.assertContains(get_response, 'invalid or has expired')
 
         post_response = self.client.post(url, follow=True)
         self.assertContains(post_response, 'invalid or has expired')

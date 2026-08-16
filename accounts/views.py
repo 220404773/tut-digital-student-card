@@ -482,6 +482,13 @@ def confirm_email(request, uidb64, token):
         user = None
 
     token_valid = user is not None and email_confirmation_token.check_token(user, token)
+    # The token's hash includes email_confirmed, so it goes invalid the
+    # instant confirmation succeeds - including for a second, near-duplicate
+    # submission of the same click (e.g. a double-click on the button, or
+    # the browser retrying the POST). That's a *different* situation from a
+    # genuinely bad/tampered/expired link, and deserves a different message
+    # instead of the alarming default - the email was in fact confirmed.
+    already_confirmed = not token_valid and user is not None and user.email_confirmed
 
     if request.method == 'POST':
         if token_valid:
@@ -489,6 +496,8 @@ def confirm_email(request, uidb64, token):
             user.email_confirmed_at = timezone.now()
             user.save()
             messages.success(request, 'Your email address has been confirmed!')
+        elif already_confirmed:
+            messages.success(request, 'Your email address is already confirmed.')
         else:
             messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your dashboard.')
 
@@ -496,7 +505,7 @@ def confirm_email(request, uidb64, token):
             return post_login_redirect(request.user)
         return redirect('login')
 
-    return render(request, 'accounts/confirm_email.html', {'token_valid': token_valid})
+    return render(request, 'accounts/confirm_email.html', {'token_valid': token_valid, 'already_confirmed': already_confirmed})
 
 
 @login_required(login_url='login')
