@@ -12,7 +12,7 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import StudentUser, DeletedStudentLog
-from accounts.views import split_full_name
+from accounts.views import split_full_name, send_confirmation_email
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import get_card_display_data, build_card_verification_url, generate_student_card
 from .google_wallet import build_google_wallet_save_url
@@ -429,11 +429,9 @@ def reissue_deleted_student(request, log_id):
         last_name=last_name,
         is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
         registration_end_date=entry.registration_end_date,
-        # The student already proved control of this mailbox before being
-        # deleted - restoring the account shouldn't make them prove it
-        # again, since it's the same email address either way.
-        email_confirmed=entry.was_email_confirmed,
-        email_confirmed_at=timezone.now() if entry.was_email_confirmed else None,
+        # Restoring is a new verification event, not a resume - the student
+        # must reconfirm control of the mailbox again regardless of whether
+        # they'd confirmed it before being deleted.
     )
     # A random throwaway password, not set_unusable_password(): Django's
     # PasswordResetForm.get_users() explicitly excludes accounts with an
@@ -458,10 +456,15 @@ def reissue_deleted_student(request, log_id):
             subject_template_name='accounts/password_reset_subject.txt',
         )
 
+    try:
+        send_confirmation_email(student, request)
+    except Exception as e:
+        messages.warning(request, f'Account restored, but the confirmation email failed to send: {str(e)}')
+
     entry.restored_at = timezone.now()
     entry.save()
 
-    messages.success(request, f'Restored {student.get_full_name_display()} with a new card - a set-password email has been sent to {student.email}.')
+    messages.success(request, f'Restored {student.get_full_name_display()} with a new card - a set-password email and a new confirmation link have been sent to {student.email}.')
     return redirect('report_deleted_students')
 
 
