@@ -24,6 +24,18 @@ from cards.utils import process_registration_proof, generate_student_card, parse
 
 OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 
+# The full OCR result carries fields (id_number, university_name,
+# qualification, academic_year, document_classification_reason, ...) that
+# signup() never reads back out of the cache - only these are actually
+# consumed downstream. Session data is DB-backed by default, so caching the
+# unfiltered result would persist those extra fields to the database for the
+# life of the session, not just "the required derived fields".
+_OCR_CACHE_FIELDS = ('error', 'student_number', 'full_name', 'email', 'period', 'confidence_score', 'quality_score', 'document_classification_confidence')
+
+
+def _scoped_ocr_cache(ocr_result):
+    return {key: ocr_result[key] for key in _OCR_CACHE_FIELDS if key in ocr_result}
+
 # Minimum wait between confirmation emails to the same account - matches the
 # ~60s resend cooldown most mail-sending flows use (GitHub, Google account
 # recovery, etc.), long enough to cover normal delivery delay so a student
@@ -148,7 +160,7 @@ def preview_registration_proof(request):
         # second pass used to roughly double signup latency.
         request.session[OCR_PREVIEW_SESSION_KEY] = {
             'hash': hash_uploaded_file(registration_proof),
-            'result': ocr_result,
+            'result': _scoped_ocr_cache(ocr_result),
             'duration': ocr_duration,
         }
 

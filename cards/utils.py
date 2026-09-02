@@ -303,6 +303,7 @@ def process_registration_proof(file):
     Returns:
         dict: OCR results with extracted fields and confidence score
     """
+    temp_path = None
     try:
         # Save file temporarily
         temp_path = os.path.join(settings.MEDIA_ROOT, f'temp_{uuid.uuid4()}.{file.name.split(".")[-1]}')
@@ -386,16 +387,20 @@ def process_registration_proof(file):
         result['document_classification_reason'] = classification['classification_reason']
 
         if not result.get('student_number') and not result.get('full_name'):
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             return None
-        
+
         # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
-        
+
         return result
-    
+
     except Exception as e:
         print(f"OCR processing error: {str(e)}")
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
         return None
 
 
