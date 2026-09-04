@@ -136,6 +136,23 @@
         </div>
     {% endif %}
 
+    <!-- PWA install prompt - hidden until the browser fires beforeinstallprompt -->
+    <div id="pwa-install-banner" class="d-none" style="position: fixed; left: 16px; bottom: 16px; z-index: 1050; max-width: 340px;">
+        <div class="card shadow">
+            <div class="card-body d-flex gap-3 align-items-start">
+                <img src="{% static 'icons/icon-192.png' %}" alt="" style="width: 48px; height: 48px; border-radius: 8px; flex-shrink: 0;">
+                <div class="flex-grow-1">
+                    <h6 class="mb-1">Install TUT Card</h6>
+                    <p class="mb-2 text-muted" style="font-size: 0.85rem;">Add it to your home screen for quick access to your digital student card.</p>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="pwa-install-accept" class="btn btn-primary btn-sm">Add to Home Screen</button>
+                        <button type="button" id="pwa-install-dismiss" class="btn btn-outline-secondary btn-sm">No thanks</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="mt-5" style="flex-shrink: 0;">
         <div class="container text-center">
@@ -221,6 +238,72 @@
                 navigator.serviceWorker.register("{% url 'service_worker' %}");
             });
         }
+    </script>
+
+    <script>
+        (function () {
+            var DISMISS_KEY = 'pwaInstallDismissedAt';
+            var DISMISS_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000; // don't re-nag for 2 weeks after "No thanks"
+
+            function isStandalone() {
+                return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+            }
+
+            function recentlyDismissed() {
+                var raw;
+                try {
+                    raw = localStorage.getItem(DISMISS_KEY);
+                } catch (e) {
+                    return false;
+                }
+                return !!raw && (Date.now() - parseInt(raw, 10)) < DISMISS_COOLDOWN_MS;
+            }
+
+            if (isStandalone() || recentlyDismissed()) {
+                return;
+            }
+
+            var deferredPrompt = null;
+            var banner = document.getElementById('pwa-install-banner');
+            var acceptBtn = document.getElementById('pwa-install-accept');
+            var dismissBtn = document.getElementById('pwa-install-dismiss');
+
+            // Chrome/Edge/Android fire this instead of showing their own UI
+            // automatically - capturing it is what lets us show our own
+            // banner and trigger the native prompt later on demand.
+            window.addEventListener('beforeinstallprompt', function (event) {
+                event.preventDefault();
+                deferredPrompt = event;
+                if (banner) banner.classList.remove('d-none');
+            });
+
+            if (acceptBtn) {
+                acceptBtn.addEventListener('click', function () {
+                    if (banner) banner.classList.add('d-none');
+                    if (!deferredPrompt) return;
+                    deferredPrompt.prompt();
+                    deferredPrompt.userChoice.finally(function () {
+                        deferredPrompt = null;
+                    });
+                });
+            }
+
+            if (dismissBtn) {
+                dismissBtn.addEventListener('click', function () {
+                    if (banner) banner.classList.add('d-none');
+                    try {
+                        localStorage.setItem(DISMISS_KEY, String(Date.now()));
+                    } catch (e) {}
+                });
+            }
+
+            window.addEventListener('appinstalled', function () {
+                if (banner) banner.classList.add('d-none');
+                try {
+                    localStorage.removeItem(DISMISS_KEY);
+                } catch (e) {}
+            });
+        })();
     </script>
 
     {% if user.is_authenticated %}
