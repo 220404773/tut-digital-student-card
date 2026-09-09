@@ -29,6 +29,11 @@ class StudentUser(AbstractUser):
     email_confirmed = models.BooleanField(default=False)
     email_confirmed_at = models.DateTimeField(null=True, blank=True)
 
+    # When the student accepted the Privacy Policy / Terms at signup. POPIA
+    # requires the responsible party to be able to show consent was given, so
+    # the checkbox alone isn't enough - the timestamp is the actual record.
+    consent_given_at = models.DateTimeField(null=True, blank=True)
+
     registration_end_date = models.DateField(null=True, blank=True)
     
     class Meta:

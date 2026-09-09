@@ -90,7 +90,7 @@
 
             <div class="col-md-3 mb-3">
                 <a href="{% url 'report_ocr' %}" class="tile-link">
-                    <div class="card bg-info text-white">
+                    <div class="card bg-info text-dark">
                         <div class="card-body">
                             <h6 class="card-title">Avg Document Classification</h6>
                             <h3>{{ ocr_stats.avg_classification_confidence|floatformat:1 }}%</h3>
@@ -148,7 +148,7 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card bg-info text-white">
+                        <div class="card bg-info text-dark">
                             <div class="card-body">
                                 <h6 class="card-title">Avg Signup Time</h6>
                                 <h3>{{ signup_stats.avg_signup_time|floatformat:2 }}s</h3>
@@ -171,7 +171,7 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card {% if signup_stats.verification_rate >= 80 %}bg-success{% elif signup_stats.verification_rate >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
+                        <div class="card {% if signup_stats.verification_rate >= 80 %}bg-success text-white{% elif signup_stats.verification_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
                             <div class="card-body">
                                 <h6 class="card-title">Verification Rate</h6>
                                 <h3>{{ signup_stats.verification_rate|floatformat:1 }}%</h3>
@@ -235,7 +235,7 @@
             {% if email_confirmation_stats.total_students %}
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
-                        <div class="card {% if email_confirmation_stats.confirmation_rate >= 80 %}bg-success{% elif email_confirmation_stats.confirmation_rate >= 50 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
+                        <div class="card {% if email_confirmation_stats.confirmation_rate >= 80 %}bg-success text-white{% elif email_confirmation_stats.confirmation_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
                             <div class="card-body">
                                 <h6 class="card-title">Email Confirmation Rate</h6>
                                 <h3>{{ email_confirmation_stats.confirmation_rate|floatformat:1 }}%</h3>
@@ -247,7 +247,7 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
-                        <div class="card bg-info text-white">
+                        <div class="card bg-info text-dark">
                             <div class="card-body">
                                 <h6 class="card-title">Avg Time to Confirm</h6>
                                 <h3>{% if email_confirmation_stats.avg_confirmation_time %}{{ email_confirmation_stats.avg_confirmation_time }}{% else %}-{% endif %}</h3>
@@ -309,7 +309,7 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_ocr' %}" class="tile-link">
-                        <div class="card {% if ocr_stats.accuracy_percentage >= 80 %}bg-success{% elif ocr_stats.accuracy_percentage >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %} text-white">
+                        <div class="card {% if ocr_stats.accuracy_percentage >= 80 %}bg-success text-white{% elif ocr_stats.accuracy_percentage >= 60 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
                             <div class="card-body">
                                 <h6 class="card-title">OCR Accuracy</h6>
                                 <h3>{{ ocr_stats.accuracy_percentage|floatformat:1 }}%</h3>
@@ -321,7 +321,7 @@
 
                 <div class="col-md-3 mb-3">
                     <a href="{% url 'report_ocr' %}" class="tile-link">
-                        <div class="card bg-info text-white">
+                        <div class="card bg-info text-dark">
                             <div class="card-body">
                                 <h6 class="card-title">Avg Confidence</h6>
                                 <h3>{{ ocr_stats.avg_confidence|floatformat:1 }}%</h3>
@@ -348,7 +348,7 @@
                             <a href="{% url 'report_ocr' %}?filter=needs_review" class="tile-link">
                                 <div class="card border-warning">
                                     <div class="card-body text-center">
-                                        <h5 class="text-warning"><i class="fas fa-exclamation-circle"></i> Needs Review</h5>
+                                        <h5 class="text-warning-emphasis"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Needs Review</h5>
                                         <h3>{{ ocr_stats.needs_review_count }}</h3>
                                     </div>
                                 </div>

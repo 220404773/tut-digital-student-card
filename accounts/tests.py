@@ -33,6 +33,7 @@ class SignupUsernameTests(TestCase):
             'registration_proof': proof,
             'password1': 'StrongPass123!',
             'password2': 'StrongPass123!',
+            'consent': 'on',
         })
         user = StudentUser.objects.get(student_number='111222333')
         self.assertEqual(user.username, 'newstudent@tut4life.ac.za')
@@ -68,6 +69,7 @@ class SignupDurationTests(TestCase):
             'registration_proof': proof,
             'password1': 'StrongPass123!',
             'password2': 'StrongPass123!',
+            'consent': 'on',
         })
 
         metrics = SignupMetrics.objects.get(user__student_number='999888777')
@@ -87,6 +89,7 @@ class SignupDurationTests(TestCase):
             'registration_proof': proof,
             'password1': 'StrongPass123!',
             'password2': 'StrongPass123!',
+            'consent': 'on',
         })
 
         metrics = SignupMetrics.objects.get(user__student_number='555444333')
@@ -110,6 +113,7 @@ class DuplicateAccountRedirectTests(TestCase):
             'phone': '',
             'password1': 'StrongPass123!',
             'password2': 'StrongPass123!',
+            'consent': 'on',
         }
         data.update(overrides)
         return self.client.post(reverse('signup'), data)

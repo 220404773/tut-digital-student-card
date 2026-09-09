@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+
+{% block title %}Terms &amp; Conditions - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Terms &amp; Conditions</h1>
+        <p class="lead">The rules for using the TUT Digital Student Card system</p>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div class="row">
+        <div class="col-lg-9 mx-auto">
+
+            <div class="alert alert-warning" role="alert">
+                <strong>Academic prototype notice.</strong> This system is a student project built for
+                academic assessment at Tshwane University of Technology. It is not an official TUT
+                service, and a card issued by it is not an official University identity document. These
+                terms have not been reviewed by a legal practitioner.
+            </div>
+
+            <p class="text-muted"><small>Last updated: 28 August 2026</small></p>
+
+            <h2 class="h4 mt-4">1. Agreement to these terms</h2>
+            <p>
+                By creating an account or using this system, you agree to these terms and to our
+                <a href="{% url 'privacy' %}">Privacy Policy</a>. If you do not agree with them, please do
+                not create an account.
+            </p>
+
+            <h2 class="h4 mt-4">2. What this system does</h2>
+            <p>
+                The system lets a registered student upload a proof of registration, reads it
+                automatically, and issues a digital student card with a QR code that a third party can
+                scan to check whether the card is currently valid.
+            </p>
+
+            <h2 class="h4 mt-4">3. Eligibility</h2>
+            <p>
+                You may only create an account if you are a registered student and you are using your own
+                identity and your own proof of registration. One account is permitted per student number
+                and per email address.
+            </p>
+
+            <h2 class="h4 mt-4">4. Your responsibilities</h2>
+            <p>You agree that you will:</p>
+            <ul>
+                <li>Provide accurate information and upload only your own genuine proof of registration.</li>
+                <li>Keep your password confidential and not share your account with anyone.</li>
+                <li>Tell the operator promptly if you believe your account has been accessed without your permission.</li>
+                <li>Keep your details up to date on your profile page.</li>
+            </ul>
+
+            <p>You agree that you will <strong>not</strong>:</p>
+            <ul>
+                <li>Upload a forged, altered or another person's document, or attempt to obtain a card you are not entitled to.</li>
+                <li>Present a card, screenshot or QR code as if it were an official University identity document.</li>
+                <li>Attempt to bypass the verification, rate limiting, or access controls of the system, or access another user's account or records.</li>
+                <li>Copy, scrape, disrupt, overload or reverse engineer the system, or use automated tools against it without permission.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">5. Verification is automated</h2>
+            <p>
+                Cards are issued automatically based on software reading your document. That reading can
+                be wrong. A document is only auto-approved when the system is sufficiently confident;
+                otherwise it is referred for manual review. The issuing of a card is not a guarantee that
+                your registration status is correct, and the operator may correct, revoke or refuse a card
+                where a mistake or misuse is found.
+            </p>
+
+            <h2 class="h4 mt-4">6. Card validity, expiry and revocation</h2>
+            <ul>
+                <li>Your card's expiry date is taken from the registration period on the document you uploaded.</li>
+                <li>A card automatically becomes <em>expired</em> once that date has passed, and it will then fail verification.</li>
+                <li>You can reactivate an expired card yourself by uploading a current proof of registration.</li>
+                <li>An administrator may <em>revoke</em> a card at any time, for example where misuse is suspected. A revoked card fails verification.</li>
+                <li>A document whose registration period has already ended, or whose end date is implausibly far in the future, will be rejected and no card will be issued.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">7. Account suspension and deletion</h2>
+            <p>
+                The operator may suspend or delete an account that breaches these terms. If your account is
+                deleted, your card and its history are permanently removed; a record of the deletion is
+                retained for audit purposes as described in the Privacy Policy. You may request deletion of
+                your own account at any time.
+            </p>
+
+            <h2 class="h4 mt-4">8. Availability</h2>
+            <p>
+                This is a prototype. It is provided on an "as is" and "as available" basis, without
+                warranties of any kind. There is no guaranteed uptime, no service level commitment, and the
+                system may be taken offline, reset, or have its data deleted at any time without notice,
+                including for assessment purposes.
+            </p>
+
+            <h2 class="h4 mt-4">9. Limitation of liability</h2>
+            <p>
+                To the maximum extent permitted by South African law, the operator is not liable for any
+                loss or damage arising from your use of, or inability to use, this system &mdash; including
+                a card being unavailable, incorrectly issued, wrongly rejected, expired, or revoked.
+                Nothing in these terms excludes liability that cannot lawfully be excluded.
+            </p>
+
+            <h2 class="h4 mt-4">10. Intellectual property</h2>
+            <p>
+                The software and its design remain the property of the project owner. The Tshwane
+                University of Technology name and marks belong to the University and are used here in the
+                context of a student academic project. Content you upload remains yours; you grant the
+                operator permission to process it solely to provide the service described here.
+            </p>
+
+            <h2 class="h4 mt-4">11. Governing law</h2>
+            <p>
+                These terms are governed by the laws of the Republic of South Africa, and are subject to
+                the jurisdiction of the South African courts.
+            </p>
+
+            <h2 class="h4 mt-4">12. Changes to these terms</h2>
+            <p>
+                These terms may be updated. The date at the top of this page will change when they are, and
+                continuing to use the system after a change means you accept the updated terms.
+            </p>
+
+            <h2 class="h4 mt-4">13. Related documents</h2>
+            <p>
+                See also our <a href="{% url 'privacy' %}">Privacy Policy</a> and our
+                <a href="{% url 'cookies' %}">Cookie Policy</a>.
+            </p>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

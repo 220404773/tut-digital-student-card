@@ -3,7 +3,33 @@ from django.contrib.auth.forms import UserCreationForm, UserChangeForm, Password
 from .models import StudentUser
 
 
-class CustomUserCreationForm(UserCreationForm):
+class AccessibleFormMixin:
+    """Wires each widget to its own help text and error message.
+
+    templates/form_field.html renders those two blocks with predictable ids
+    ("<auto_id>_help" / "<auto_id>_error"), but a template can't add attributes
+    to an already-rendered widget - so the aria-describedby that points at them,
+    and the aria-invalid that marks a field as failed, have to be set here.
+    Without this a screen reader reads the error as loose text somewhere after
+    the input, with nothing tying the two together.
+    """
+
+    def apply_accessibility_attrs(self):
+        # Touching self.errors on a bound form triggers validation, so the
+        # error state is already known by the time we render.
+        errors = self.errors if self.is_bound else {}
+        for name, field in self.fields.items():
+            described_by = []
+            if field.help_text:
+                described_by.append(f'{self[name].auto_id}_help')
+            if name in errors:
+                described_by.append(f'{self[name].auto_id}_error')
+                field.widget.attrs['aria-invalid'] = 'true'
+            if described_by:
+                field.widget.attrs['aria-describedby'] = ' '.join(described_by)
+
+
+class CustomUserCreationForm(AccessibleFormMixin, UserCreationForm):
     """
     Form for creating a new user during registration.
     """
@@ -16,17 +42,32 @@ class CustomUserCreationForm(UserCreationForm):
         required=True,
         help_text='Upload your proof of registration (PDF, JPG, PNG). Max 5MB.'
     )
-    
+    # POPIA puts the burden of proving consent on whoever processes the data,
+    # so this isn't only a checkbox to tick - signup() stamps consent_given_at
+    # from it, giving a record of when consent was actually given.
+    consent = forms.BooleanField(
+        required=True,
+        label='I have read and accept the Privacy Policy and Terms & Conditions, and I consent to my '
+              'personal information and proof of registration being processed as described in them.',
+        error_messages={
+            'required': 'You need to accept the Privacy Policy and Terms & Conditions before you can create an account.',
+        },
+    )
+
     class Meta:
         model = StudentUser
         fields = ('email', 'first_name', 'last_name', 'student_number', 'phone',
                   'registration_proof', 'password1', 'password2')
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields:
-            self.fields[field].widget.attrs.update({'class': 'form-control'})
+        for name, field in self.fields.items():
+            # Checkboxes take Bootstrap's form-check-input; form-control would
+            # stretch them to full width.
+            css_class = 'form-check-input' if isinstance(field.widget, forms.CheckboxInput) else 'form-control'
+            field.widget.attrs.update({'class': css_class})
         self.fields['last_name'].widget.attrs.setdefault('placeholder', 'Surname')
+        self.apply_accessibility_attrs()
     
     def clean_email(self):
         email = self.cleaned_data.get('email')
@@ -73,7 +114,7 @@ class CustomUserCreationForm(UserCreationForm):
         return registration_proof
 
 
-class CustomUserChangeForm(UserChangeForm):
+class CustomUserChangeForm(AccessibleFormMixin, UserChangeForm):
     """
     Form for updating user profile information. Email is deliberately not
     part of this form - it's shown read-only in the template (disabled
@@ -88,20 +129,26 @@ class CustomUserChangeForm(UserChangeForm):
         super().__init__(*args, **kwargs)
         for field in self.fields:
             self.fields[field].widget.attrs.update({'class': 'form-control'})
+        self.apply_accessibility_attrs()
 
 
-class StyledPasswordChangeForm(PasswordChangeForm):
+class StyledPasswordChangeForm(AccessibleFormMixin, PasswordChangeForm):
     """PasswordChangeForm with the same Bootstrap styling as the rest of the app."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         for field in self.fields:
             self.fields[field].widget.attrs.update({'class': 'form-control'})
+        self.apply_accessibility_attrs()
 
 
-class LoginForm(forms.Form):
+class LoginForm(AccessibleFormMixin, forms.Form):
     """
     Login form. Field-level errors let the template highlight exactly
     which field (email vs password) caused the failure.
     """
-    email = forms.EmailField(widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'Email', 'autofocus': True}))
-    password = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Password'}))
+    email = forms.EmailField(widget=forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'Email', 'autofocus': True, 'autocomplete': 'email'}))
+    password = forms.CharField(widget=forms.PasswordInput(attrs={'class': 'form-control', 'placeholder': 'Password', 'autocomplete': 'current-password'}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.apply_accessibility_attrs()

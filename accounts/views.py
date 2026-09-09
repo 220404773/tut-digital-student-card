@@ -243,6 +243,10 @@ def signup(request):
             # again moments later (POPIA) - a full upload+check+delete round
             # trip against S3 for a file that was never needed in storage.
             user.registration_proof = None
+            # The form makes this checkbox mandatory, so reaching here means it
+            # was ticked - record when, since that timestamp is the evidence of
+            # consent, not the tick itself.
+            user.consent_given_at = timezone.now()
 
             # Track file upload metrics
             file_upload_size_mb = 0

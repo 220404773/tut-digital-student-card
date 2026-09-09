@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+
+{% block title %}Privacy Policy - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Privacy Policy</h1>
+        <p class="lead">How this system collects, uses and protects your personal information</p>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div class="row">
+        <div class="col-lg-9 mx-auto">
+
+            <div class="alert alert-warning" role="alert">
+                <strong>Academic prototype notice.</strong> This system is a student project built for
+                academic assessment at Tshwane University of Technology. It is not an official TUT
+                service and has not been reviewed by the University's Information Officer or legal
+                department. This policy describes what the software genuinely does, but it must be
+                reviewed by a qualified person before the system is used with real student data.
+            </div>
+
+            <p class="text-muted"><small>Last updated: 28 August 2026</small></p>
+
+            <h2 class="h4 mt-4">1. Who is responsible for your information</h2>
+            <p>
+                This system is operated as a student academic project. Questions about your personal
+                information, or requests to exercise any of the rights in section 8, should be directed
+                to the project owner through the contact route given to you with your assessment or
+                demonstration materials.
+            </p>
+
+            <h2 class="h4 mt-4">2. The law that applies</h2>
+            <p>
+                This system is operated in South Africa and is subject to the
+                <strong>Protection of Personal Information Act 4 of 2013 (POPIA)</strong>. Parts of the
+                <strong>Electronic Communications and Transactions Act 25 of 2002 (ECTA)</strong> and the
+                <strong>Promotion of Access to Information Act 2 of 2000 (PAIA)</strong> may also apply.
+                Where this policy and POPIA differ, POPIA prevails.
+            </p>
+
+            <h2 class="h4 mt-4">3. What information is collected</h2>
+
+            <h3 class="h6 mt-3">Information you give us</h3>
+            <ul>
+                <li><strong>Account details:</strong> first name, surname, student number, email address, and password (stored only as a cryptographic hash, never in readable form).</li>
+                <li><strong>Optional profile details:</strong> phone number, date of birth, gender, and a profile photograph.</li>
+                <li><strong>Proof of registration:</strong> the document you upload during signup or when reactivating an expired card.</li>
+            </ul>
+
+            <h3 class="h6 mt-3">Information created about you by the system</h3>
+            <ul>
+                <li><strong>Card records:</strong> card number, issue date, expiry date, card status, and the generated QR code image.</li>
+                <li><strong>Card activity log:</strong> each time your card is viewed, its QR code downloaded, or the card publicly verified, together with the IP address and browser user-agent that performed the action, and the date and time.</li>
+                <li><strong>Page visits:</strong> the page path, your account (if signed in), your IP address and a timestamp, recorded for each successfully loaded page. Requests for static files, media files and the administration area are not recorded.</li>
+                <li><strong>Processing measurements:</strong> how long your signup took, the size of the file you uploaded, and the confidence, accuracy and duration of the document reading process, including the student number and name that were read from your document.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">4. How your proof of registration is handled</h2>
+            <p>
+                This is the most sensitive document the system handles, so it is treated specifically:
+            </p>
+            <ul>
+                <li>The file is written to temporary storage only for as long as it takes to read it.</li>
+                <li>Text is extracted from it, first using optical character recognition software that runs inside this system, and then sent as <em>text</em> to a third-party language model service to identify the individual fields (see section 5).</li>
+                <li><strong>The file itself is then deleted.</strong> It is not kept after processing, on any outcome, including when processing fails or the document is rejected.</li>
+                <li>Only the derived fields the system actually needs are kept: your student number, name, email address, the end date of your registration period, and quality and confidence scores.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">5. Who your information is shared with</h2>
+            <p>
+                Your information is not sold, and is not shared for advertising. It is shared with the
+                following service providers, only to the extent needed to operate the system:
+            </p>
+
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <caption class="visually-hidden">Third-party service providers and the information each receives</caption>
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Service provider</th>
+                            <th scope="col">Purpose</th>
+                            <th scope="col">What it receives</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>NVIDIA (language model API)</td>
+                            <td>Identifying the fields in your proof of registration</td>
+                            <td>The <strong>text</strong> extracted from your uploaded document. The document file itself is never sent.</td>
+                        </tr>
+                        <tr>
+                            <td>Microsoft Azure Communication Services</td>
+                            <td>Sending confirmation and password-reset emails</td>
+                            <td>Your email address and the content of that email</td>
+                        </tr>
+                        <tr>
+                            <td>Google Wallet</td>
+                            <td>Adding your card to Google Wallet &mdash; <strong>only if you choose to</strong></td>
+                            <td>Your name, student number, card number, card expiry date and card verification link</td>
+                        </tr>
+                        <tr>
+                            <td>DigitalOcean</td>
+                            <td>Hosting the application, database and uploaded images</td>
+                            <td>All stored system data, held at rest in their Amsterdam region</td>
+                        </tr>
+                        <tr>
+                            <td>jsDelivr and Cloudflare (cdnjs)</td>
+                            <td>Delivering the styling and icon files used by every page</td>
+                            <td>Your IP address, browser user-agent and the page requesting the file &mdash; sent automatically by your browser</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p>
+                <strong>Transfers outside South Africa.</strong> Several of the providers above process
+                information outside South Africa. POPIA permits this only under specific conditions
+                (section 72). Because this is an academic prototype, no formal transfer agreements are in
+                place with these providers. This is a known limitation and is one of the reasons the
+                system should not be used with real student data without further work.
+            </p>
+
+            <h2 class="h4 mt-4">6. Why the information is used</h2>
+            <ul>
+                <li>To confirm that you are a registered student and to issue your digital card.</li>
+                <li>To confirm that you control the email address on your account.</li>
+                <li>To let a card be checked by scanning its QR code.</li>
+                <li>To let you sign in, recover access, and manage your own profile.</li>
+                <li>To produce anonymous-in-aggregate statistics on system performance, used for the academic assessment of the project.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">7. How long information is kept</h2>
+            <ul>
+                <li><strong>Your uploaded proof of registration:</strong> deleted immediately after processing.</li>
+                <li><strong>Your account and card:</strong> kept while your account exists.</li>
+                <li><strong>If your account is deleted:</strong> the account, its card and its activity history are permanently removed. A record of the deletion is kept for audit purposes, containing your student number, name, email address, whether you were verified, whether you had a card and its number, your registration end date, and who deleted the account.</li>
+                <li><strong>Page visits and processing measurements:</strong> these are currently kept indefinitely. The system does not yet implement automatic deletion of this data after a fixed period, which is a shortcoming of this prototype.</li>
+            </ul>
+
+            <h2 class="h4 mt-4">8. Your rights under POPIA</h2>
+            <p>You have the right to:</p>
+            <ul>
+                <li>Ask what personal information is held about you, and receive a copy of it.</li>
+                <li>Correct or complete information that is inaccurate, irrelevant, misleading or out of date. You can correct most of your own details on your profile page.</li>
+                <li>Ask for your information to be deleted or destroyed.</li>
+                <li>Object to the processing of your information.</li>
+                <li>Withdraw a consent you previously gave, at any time. Withdrawing consent does not affect processing that already took place lawfully.</li>
+                <li>Lodge a complaint with the <strong>Information Regulator (South Africa)</strong>, whose contact details are published at <a href="https://inforegulator.org.za/" rel="noopener noreferrer" target="_blank">inforegulator.org.za</a> (opens in a new tab).</li>
+            </ul>
+
+            <h2 class="h4 mt-4">9. How your information is protected</h2>
+            <ul>
+                <li>All traffic is encrypted using HTTPS, and the browser is instructed to refuse insecure connections.</li>
+                <li>Passwords are stored only as salted cryptographic hashes.</li>
+                <li>Session and security cookies are marked <code>Secure</code>, and you are signed out automatically after 20 minutes of inactivity.</li>
+                <li>Sign-in attempts, password-reset requests, document uploads and public card checks are all rate-limited to make abuse harder.</li>
+                <li>Uploaded files are checked against their actual file signature, not just their file name, before being processed.</li>
+                <li>Access to student records and reports is restricted to administrator accounts.</li>
+            </ul>
+            <p>
+                No system is perfectly secure. As an academic prototype, this system has not undergone an
+                independent security assessment or penetration test.
+            </p>
+
+            <h2 class="h4 mt-4">10. Children</h2>
+            <p>
+                This system is intended for registered university students. It is not designed for
+                children, and accounts should not be created for a person under 18 without the consent of
+                a competent person, as POPIA requires.
+            </p>
+
+            <h2 class="h4 mt-4">11. Changes to this policy</h2>
+            <p>
+                If this policy changes, the date at the top of this page will be updated. Material changes
+                affecting how your information is used will be communicated to you by email.
+            </p>
+
+            <h2 class="h4 mt-4">12. Related documents</h2>
+            <p>
+                See also our <a href="{% url 'terms' %}">Terms &amp; Conditions</a> and our
+                <a href="{% url 'cookies' %}">Cookie Policy</a>.
+            </p>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

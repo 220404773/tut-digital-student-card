@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Cookie Policy - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Cookie Policy</h1>
+        <p class="lead">What this system stores in your browser, and why</p>
+    </div>
+</div>
+
+<div class="container my-4">
+    <div class="row">
+        <div class="col-lg-9 mx-auto">
+
+            <p class="text-muted"><small>Last updated: 28 August 2026</small></p>
+
+            <div class="alert alert-success" role="alert">
+                <strong>In short:</strong> this system uses only the cookies it needs in order to work.
+                There are no advertising cookies, no analytics cookies, and no third-party tracking
+                cookies.
+            </div>
+
+            <h2 class="h4 mt-4">1. What cookies are</h2>
+            <p>
+                A cookie is a small text file that a website asks your browser to store and send back on
+                later requests. Cookies that are essential for a site to function &mdash; for example, to
+                remember that you are signed in &mdash; are generally referred to as "strictly necessary".
+            </p>
+
+            <h2 class="h4 mt-4">2. The cookies this system uses</h2>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <caption class="visually-hidden">Cookies set by this system, their purpose and lifetime</caption>
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Purpose</th>
+                            <th scope="col">Lifetime</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>sessionid</code></td>
+                            <td>Strictly necessary</td>
+                            <td>Keeps you signed in as you move between pages. Without it you would be signed out on every click.</td>
+                            <td>20 minutes from your last activity, then it expires and you are signed out</td>
+                        </tr>
+                        <tr>
+                            <td><code>csrftoken</code></td>
+                            <td>Strictly necessary (security)</td>
+                            <td>Protects forms against cross-site request forgery, an attack in which another site tries to submit a form as you.</td>
+                            <td>Up to 1 year</td>
+                        </tr>
+                        <tr>
+                            <td><code>cookie_notice_ack</code></td>
+                            <td>Strictly necessary</td>
+                            <td>Remembers that you have seen the cookie notice, so it is not shown to you on every page.</td>
+                            <td>1 year</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p>
+                In live use, <code>sessionid</code> and <code>csrftoken</code> are marked
+                <code>Secure</code>, so your browser only ever sends them over an encrypted HTTPS
+                connection.
+            </p>
+
+            <h2 class="h4 mt-4">3. Other browser storage</h2>
+            <p>
+                One item is stored using your browser's local storage rather than a cookie:
+            </p>
+            <ul>
+                <li>
+                    <code>pwaInstallDismissedAt</code> &mdash; if you dismiss the "Install TUT Card"
+                    prompt, this records when you did so, so that you are not asked again for 14 days. It
+                    stays in your browser, is never sent to the server, and contains no personal
+                    information.
+                </li>
+            </ul>
+
+            <h2 class="h4 mt-4">4. Cookies this system does not use</h2>
+            <p>
+                This system does not use analytics cookies, advertising or targeting cookies, social media
+                cookies, or any third-party tracking cookies. There are no embedded videos, social media
+                widgets, comment systems, chat widgets, advertising tags or tracking pixels anywhere on
+                the site.
+            </p>
+
+            <h2 class="h4 mt-4">5. Third-party requests</h2>
+            <p>
+                Every page loads its styling and icon files from two public content delivery networks:
+                <strong>jsDelivr</strong> (Bootstrap) and <strong>Cloudflare cdnjs</strong> (Font Awesome).
+                These requests do not set cookies for this site, but as with any request your browser
+                makes, those providers can see your IP address, your browser user-agent and the page that
+                requested the file. This is described in section 5 of the
+                <a href="{% url 'privacy' %}">Privacy Policy</a>.
+            </p>
+
+            <h2 class="h4 mt-4">6. Server-side activity records</h2>
+            <p>
+                Separately from cookies, the system keeps its own records of page visits and card activity,
+                including IP addresses. These are described in sections 3 and 7 of the
+                <a href="{% url 'privacy' %}">Privacy Policy</a>. They are not controlled by your cookie
+                settings.
+            </p>
+
+            <h2 class="h4 mt-4">7. Managing cookies</h2>
+            <p>
+                Every browser lets you view, block and delete cookies through its settings. Because the
+                cookies listed in section 2 are strictly necessary, blocking or deleting them will sign you
+                out and will prevent forms &mdash; including sign-in &mdash; from being submitted
+                successfully. There are no optional cookies to switch off, which is why this site shows a
+                short notice rather than a consent chooser.
+            </p>
+
+            <h2 class="h4 mt-4">8. Related documents</h2>
+            <p>
+                See also our <a href="{% url 'privacy' %}">Privacy Policy</a> and our
+                <a href="{% url 'terms' %}">Terms &amp; Conditions</a>.
+            </p>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -65,17 +65,55 @@
         .password-toggle-btn:focus-visible { outline: 2px solid var(--tut-blue); outline-offset: 2px; }
         .form-text ul { margin-bottom: 0; padding-left: 1.1rem; }
         .form-text li { margin-bottom: 0.15rem; }
+
+        /* Keyboard users can jump straight past the navbar to the page content.
+           Hidden until focused, so it only appears when actually tabbed to. */
+        .skip-link {
+            position: absolute;
+            left: -9999px;
+            top: 0;
+            z-index: 2000;
+            background: #fff;
+            color: var(--tut-blue);
+            padding: 0.75rem 1.25rem;
+            font-weight: 600;
+            border: 2px solid var(--tut-blue);
+            border-radius: 0 0 6px 0;
+        }
+        .skip-link:focus {
+            left: 0;
+        }
+        main:focus { outline: none; }
+
+        /* Visible focus ring on every interactive element - the default is
+           easy to lose against the blue navbar and coloured buttons. */
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible,
+        textarea:focus-visible,
+        [tabindex]:focus-visible {
+            outline: 3px solid #FFCD00;
+            outline-offset: 2px;
+        }
+        .navbar a:focus-visible { outline-color: #fff; }
+
+        footer a { color: #cfe2ff; }
+        footer a:hover, footer a:focus { color: #fff; }
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
             <a class="navbar-brand" href="{% url 'home' %}">
                 <i class="fas fa-id-card"></i> TUT Student Card
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation menu">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
@@ -107,14 +145,14 @@
                  data-autodismiss-ms="{% if message.tags == 'success' %}5000{% else %}10000{% endif %}"
                  role="alert">
                 {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss this message"></button>
             </div>
         {% endfor %}
     </div>
     {% endif %}
     
     <!-- Content -->
-    <main>
+    <main id="main-content" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
 
@@ -136,6 +174,24 @@
         </div>
     {% endif %}
 
+    <!-- Cookie notice. This is a notice, not a consent chooser, because the
+         site sets only strictly-necessary cookies - there is nothing optional
+         to toggle, and offering a fake choice would be misleading. -->
+    <div id="cookie-notice" class="d-none" role="region" aria-label="Cookie notice"
+         style="position: fixed; left: 0; right: 0; bottom: 0; z-index: 1060; background: #003d7a; color: #fff; padding: 0.9rem 1rem;">
+        <div class="container d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <p class="mb-0" style="max-width: 70ch;">
+                This site uses only the cookies it needs to keep you signed in and to keep forms secure.
+                There are no advertising or analytics cookies. Read our
+                <a href="{% url 'cookies' %}" style="color: #ffd966;">Cookie Policy</a> or
+                <a href="{% url 'privacy' %}" style="color: #ffd966;">Privacy Policy</a>.
+            </p>
+            <button type="button" id="cookie-notice-accept" class="btn btn-light btn-sm flex-shrink-0">
+                Got it
+            </button>
+        </div>
+    </div>
+
     <!-- PWA install prompt - hidden until the browser fires beforeinstallprompt -->
     <div id="pwa-install-banner" class="d-none" style="position: fixed; left: 16px; bottom: 16px; z-index: 1050; max-width: 340px;">
         <div class="card shadow">
@@ -156,7 +212,14 @@
     <!-- Footer -->
     <footer class="mt-5" style="flex-shrink: 0;">
         <div class="container text-center">
-            <p class="mb-0">&copy; 2026 Tshwane University of Technology. All rights reserved.</p>
+            <nav aria-label="Legal and policy links" class="mb-2">
+                <a href="{% url 'privacy' %}">Privacy Policy</a>
+                <span aria-hidden="true" class="mx-2">|</span>
+                <a href="{% url 'terms' %}">Terms &amp; Conditions</a>
+                <span aria-hidden="true" class="mx-2">|</span>
+                <a href="{% url 'cookies' %}">Cookie Policy</a>
+            </nav>
+            <p class="mb-0">&copy; 2026 TUT Digital Student Card &mdash; a student academic project.</p>
         </div>
     </footer>
     
@@ -238,6 +301,31 @@
                 navigator.serviceWorker.register("{% url 'service_worker' %}");
             });
         }
+    </script>
+
+    <script>
+        (function () {
+            var COOKIE_NAME = 'cookie_notice_ack';
+            var notice = document.getElementById('cookie-notice');
+            var acceptBtn = document.getElementById('cookie-notice-accept');
+            if (!notice || !acceptBtn) return;
+
+            function alreadyAcknowledged() {
+                return document.cookie.split('; ').some(function (entry) {
+                    return entry.indexOf(COOKIE_NAME + '=') === 0;
+                });
+            }
+
+            if (alreadyAcknowledged()) return;
+            notice.classList.remove('d-none');
+
+            acceptBtn.addEventListener('click', function () {
+                var oneYear = 365 * 24 * 60 * 60;
+                document.cookie = COOKIE_NAME + '=1; Max-Age=' + oneYear + '; Path=/; SameSite=Lax' +
+                    (window.location.protocol === 'https:' ? '; Secure' : '');
+                notice.classList.add('d-none');
+            });
+        })();
     </script>
 
     <script>

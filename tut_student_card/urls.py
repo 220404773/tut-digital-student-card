@@ -22,6 +22,9 @@ urlpatterns = [
     path('accounts/', include('accounts.urls')),
     path('cards/', include('cards.urls')),
     path('sw.js', service_worker, name='service_worker'),
+    path('privacy/', TemplateView.as_view(template_name='legal/privacy.html'), name='privacy'),
+    path('terms/', TemplateView.as_view(template_name='legal/terms.html'), name='terms'),
+    path('cookies/', TemplateView.as_view(template_name='legal/cookies.html'), name='cookies'),
     path('', TemplateView.as_view(template_name='index.html'), name='home'),
 ]
 
