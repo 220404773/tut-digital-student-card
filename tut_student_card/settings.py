@@ -126,11 +126,29 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# WhiteNoise serves static files straight from the container, so there is no
+# separate web server to configure. The compressed manifest backend gzips
+# each file at collectstatic time and renames it with a content hash, which
+# means responses are smaller and can be cached indefinitely - a new deploy
+# changes the hash rather than needing a cache purge.
+#
+# Django's HashedFilesMixin skips the manifest lookup entirely while
+# DEBUG is True, so local development still serves plain /static/css/style.css
+# and needs no collectstatic run. Only DEBUG=False reads the manifest, and the
+# Dockerfile runs collectstatic at build time to produce it. collectstatic also
+# keeps an unhashed copy of every file, which is what lets manifest.json and
+# sw.js keep referencing /static/icons/icon-192.png literally.
+STORAGES = {
+    'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+    'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'},
+}
+
 # Profile pictures and QR codes need durable storage - a PaaS container's
 # local disk doesn't survive a redeploy and isn't shared across instances.
 # Set AWS_STORAGE_BUCKET_NAME (a DigitalOcean Spaces bucket, which is
 # S3-compatible) to switch media storage there; unset, local dev keeps
-# using the filesystem exactly as before.
+# using the filesystem exactly as before. Only the media ('default') backend
+# changes - static files stay on WhiteNoise either way.
 AWS_STORAGE_BUCKET_NAME = config('AWS_STORAGE_BUCKET_NAME', default='')
 if AWS_STORAGE_BUCKET_NAME:
     AWS_ACCESS_KEY_ID = config('AWS_ACCESS_KEY_ID', default='')
@@ -139,10 +157,7 @@ if AWS_STORAGE_BUCKET_NAME:
     AWS_S3_REGION_NAME = config('AWS_S3_REGION_NAME', default='ams3')
     AWS_DEFAULT_ACL = 'public-read'
     AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
-    STORAGES = {
-        'default': {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'},
-        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
-    }
+    STORAGES['default'] = {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'}
     MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
