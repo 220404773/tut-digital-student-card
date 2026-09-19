@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from accounts.models import StudentUser
+from accounts.models import User
 from .models import StudentCard
 from .utils import (
     build_card_verification_url,
@@ -16,7 +16,7 @@ from .utils import (
 
 
 def make_user(email='student@tut4life.ac.za', student_number='123456789', password='TestPass123!', **extra):
-    user = StudentUser(email=email, student_number=student_number, first_name='Test', last_name='Student', **extra)
+    user = User(email=email, student_number=student_number, first_name='Test', last_name='Student', **extra)
     user.username = email
     user.set_password(password)
     user.save()
@@ -26,8 +26,8 @@ def make_user(email='student@tut4life.ac.za', student_number='123456789', passwo
 REAL_DOCUMENT_TEXT = """
 TSHWANE UNIVERSITY OF TECHNOLOGY
 TO WHOM IT MAY CONCERN
-It is hereby confirmed that JOHN SMITH, Student Number 220404773
-ID Number 9606215359089
+It is hereby confirmed that JOHN SMITH, Student Number 220202117
+ID Number 9607015050081
 Qualification: ADRS20 AdvDip (Computer Science)
 Registered From 03-Jan-2026 to 31-Dec-2026
 Campus and Registration Type: Full Time
@@ -138,7 +138,7 @@ class AdminVerificationCardGenerationTests(TestCase):
 
         self.staff = make_user(email='admin2@tut4life.ac.za', student_number='staffnum2', is_staff=True, is_superuser=True)
         self.student = make_user(email='pending@tut4life.ac.za', student_number='888777666')
-        self.model_admin = StudentUserAdmin(StudentUser, AdminSite())
+        self.model_admin = StudentUserAdmin(User, AdminSite())
 
         factory = RequestFactory()
         self.request = factory.get('/admin/')
@@ -158,7 +158,7 @@ class AdminVerificationCardGenerationTests(TestCase):
     def test_new_student_added_pre_verified_gets_a_card(self):
         """change=False (the admin Add form) must generate a card too, not
         just change=True (editing an existing student)."""
-        new_student = StudentUser(
+        new_student = User(
             email='newlyadded@tut4life.ac.za', student_number='777666555',
             first_name='New', last_name='Student', username='newlyadded@tut4life.ac.za',
             is_verified=True,
@@ -178,12 +178,12 @@ class StaffAdminPlaceholderStudentNumberTests(TestCase):
         from django.contrib.admin.sites import AdminSite
         from accounts.admin import StudentUserAdmin
 
-        self.model_admin = StudentUserAdmin(StudentUser, AdminSite())
+        self.model_admin = StudentUserAdmin(User, AdminSite())
         factory = RequestFactory()
         self.request = factory.get('/admin/')
 
     def _make_admin_candidate(self, email, student_number='placeholder'):
-        user = StudentUser(
+        user = User(
             email=email, student_number=student_number,
             first_name='New', last_name='Admin', username=email,
             is_staff=True, is_superuser=True,
@@ -207,7 +207,7 @@ class StaffAdminPlaceholderStudentNumberTests(TestCase):
         self.assertTrue(second.student_number.startswith('STAFF-ADMIN-'))
 
     def test_non_staff_student_keeps_its_real_student_number(self):
-        user = StudentUser(
+        user = User(
             email='realstudent@tut4life.ac.za', student_number='123123123',
             first_name='Real', last_name='Student', username='realstudent@tut4life.ac.za',
         )

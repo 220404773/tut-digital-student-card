@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm, PasswordChangeForm
 from django.core.files.uploadedfile import UploadedFile
-from .models import StudentUser
+from .models import User
 
 
 class AccessibleFormMixin:
@@ -56,7 +56,7 @@ class CustomUserCreationForm(AccessibleFormMixin, UserCreationForm):
     )
 
     class Meta:
-        model = StudentUser
+        model = User
         fields = ('email', 'first_name', 'last_name', 'student_number', 'phone',
                   'registration_proof', 'password1', 'password2')
 
@@ -72,13 +72,13 @@ class CustomUserCreationForm(AccessibleFormMixin, UserCreationForm):
     
     def clean_email(self):
         email = self.cleaned_data.get('email')
-        if StudentUser.objects.filter(email=email).exists():
+        if User.objects.filter(email=email).exists():
             raise forms.ValidationError('Email already registered.')
         return email
     
     def clean_student_number(self):
         student_number = self.cleaned_data.get('student_number')
-        if StudentUser.objects.filter(student_number=student_number).exists():
+        if User.objects.filter(student_number=student_number).exists():
             raise forms.ValidationError('Student number already registered.')
         return student_number
     
@@ -123,7 +123,7 @@ class CustomUserChangeForm(AccessibleFormMixin, UserChangeForm):
     every save silently blank it out.
     """
     class Meta:
-        model = StudentUser
+        model = User
         fields = ('first_name', 'last_name', 'phone', 'date_of_birth', 'gender', 'profile_picture')
 
     def __init__(self, *args, **kwargs):

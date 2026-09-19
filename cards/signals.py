@@ -9,7 +9,7 @@ def delete_qr_code_on_card_delete(sender, instance, **kwargs):
     """Deleting a StudentCard row doesn't delete its qr_code file from
     storage on its own - Django never does that automatically for a
     FileField, regardless of backend. Without this, every deleted card
-    (including ones cascade-deleted when a StudentUser is removed) leaves
+    (including ones cascade-deleted when a User is removed) leaves
     an orphaned QR image sitting in Spaces forever.
     """
     if instance.qr_code:

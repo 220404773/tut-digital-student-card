@@ -1,12 +1,12 @@
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
-from .models import StudentUser
+from .models import User
 
 
-@receiver(post_delete, sender=StudentUser)
+@receiver(post_delete, sender=User)
 def delete_user_files_on_delete(sender, instance, **kwargs):
-    """Deleting a StudentUser doesn't delete their profile picture (or a
+    """Deleting a User doesn't delete their profile picture (or a
     stray registration_proof, if one was ever left set) from storage -
     same Django limitation FileField has everywhere, S3/Spaces included.
     """

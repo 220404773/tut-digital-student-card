@@ -8,14 +8,14 @@ from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
-from .models import StudentUser, DeletedStudentLog
+from .models import User, DeletedStudentLog
 from .views import delete_registration_proof
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
 
 
 class StudentUserAdmin(UserAdmin):
-    model = StudentUser
+    model = User
     list_display = ('email', 'first_name', 'last_name', 'student_number', 'is_verified', 'is_staff')
     # Overrides UserAdmin.fieldsets rather than extending it, dropping
     # groups/user_permissions - admin accounts here are just is_staff +
@@ -30,7 +30,7 @@ class StudentUserAdmin(UserAdmin):
     )
     actions = ['revoke_card_action', 'reissue_card_action']
     # "View on site" normally links to the object's own get_absolute_url()
-    # (StudentUser has none) - point it at the admin reporting dashboard
+    # (User has none) - point it at the admin reporting dashboard
     # instead, since that's the natural "site" a staff member editing a
     # student wants to jump to from here.
     view_on_site = lambda self, obj: reverse('performance_dashboard')
@@ -117,7 +117,7 @@ class StudentUserAdmin(UserAdmin):
     def revoke_card_view(self, request, student_id):
         if request.method != 'POST':
             return HttpResponseNotAllowed(['POST'])
-        student = get_object_or_404(StudentUser, pk=student_id)
+        student = get_object_or_404(User, pk=student_id)
         if self._revoke_single_card(student, request.user):
             self.message_user(request, f"Revoked {student.get_full_name_display()}'s digital card.")
         else:
@@ -127,7 +127,7 @@ class StudentUserAdmin(UserAdmin):
     def reissue_card_view(self, request, student_id):
         if request.method != 'POST':
             return HttpResponseNotAllowed(['POST'])
-        student = get_object_or_404(StudentUser, pk=student_id)
+        student = get_object_or_404(User, pk=student_id)
         reissued, newly_issued, failed = self._reissue_single_card(student, request)
         if reissued:
             self.message_user(request, f"Reissued {student.get_full_name_display()}'s digital card (new card number and QR code).")
@@ -138,7 +138,7 @@ class StudentUserAdmin(UserAdmin):
         return redirect('admin:accounts_studentuser_change', student.pk)
 
     def _log_deletion(self, obj, deleted_by):
-        # Deleting a StudentUser cascades - their StudentCard, CardActivity,
+        # Deleting a User cascades - their StudentCard, CardActivity,
         # and metrics rows all disappear with it. Capture a snapshot before
         # that happens, or there'd be no record the student ever existed.
         card = StudentCard.objects.filter(user=obj).first()
@@ -172,7 +172,7 @@ class StudentUserAdmin(UserAdmin):
         # this placeholder scheme, so it doesn't reassign on every save.
         if obj.is_staff and obj.is_superuser and not STAFF_ADMIN_NUMBER_RE.match(obj.student_number or ''):
             used_numbers = set()
-            for number in StudentUser.objects.filter(
+            for number in User.objects.filter(
                 student_number__startswith='STAFF-ADMIN-'
             ).exclude(pk=obj.pk).values_list('student_number', flat=True):
                 match = STAFF_ADMIN_NUMBER_RE.match(number)
@@ -205,7 +205,7 @@ class StudentUserAdmin(UserAdmin):
                 self.message_user(request, f'Error generating card: {str(e)}', level=messages.ERROR)
 
 
-admin.site.register(StudentUser, StudentUserAdmin)
+admin.site.register(User, StudentUserAdmin)
 admin.site.unregister(Group)
 
 # The "View site" link in the admin header (admin/base.html's {{ site_url }})

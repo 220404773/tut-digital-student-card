@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.db import models
-from .models import StudentUser
+from .models import User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
@@ -262,7 +262,7 @@ def signup(request):
                 # a second account means either a shared document or a reused
                 # one, and neither should silently produce a second card.
                 proof_hash = hash_uploaded_file(registration_proof)
-                if StudentUser.objects.filter(registration_proof_hash=proof_hash).exists():
+                if User.objects.filter(registration_proof_hash=proof_hash).exists():
                     messages.warning(
                         request,
                         'This exact document has already been used to register another account. '
@@ -489,7 +489,7 @@ def password_reset_view(request):
 
     if request.method == 'POST':
         email = request.POST.get('email', '').strip()
-        exists = bool(email) and StudentUser.objects.filter(email__iexact=email, is_active=True).exists()
+        exists = bool(email) and User.objects.filter(email__iexact=email, is_active=True).exists()
 
         if exists:
             request.session['password_reset_failed_attempts'] = 0
@@ -518,8 +518,8 @@ def confirm_email(request, uidb64, token):
     """
     try:
         uid = urlsafe_base64_decode(uidb64).decode()
-        user = StudentUser.objects.get(pk=uid)
-    except (TypeError, ValueError, OverflowError, StudentUser.DoesNotExist):
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         user = None
 
     token_valid = user is not None and email_confirmation_token.check_token(user, token)
@@ -701,8 +701,8 @@ def login_view(request):
         try:
             # Emails are case-insensitive in practice (e.g. TUT student mail),
             # so match the same way regardless of how it was typed at signup.
-            matched_user = StudentUser.objects.get(email__iexact=email)
-        except StudentUser.DoesNotExist:
+            matched_user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
             form.add_error('email', 'No account found with this email address.')
         else:
             authenticated_user = authenticate(request, username=matched_user.username, password=password)
@@ -793,7 +793,7 @@ def user_search(request):
     results = []
     
     if query:
-        results = StudentUser.objects.filter(
+        results = User.objects.filter(
             is_verified=True
         ).filter(
             models.Q(first_name__icontains=query) |
@@ -812,7 +812,7 @@ def student_detail(request, student_id):
     """
     View a student's public profile.
     """
-    student = get_object_or_404(StudentUser, pk=student_id, is_verified=True)
+    student = get_object_or_404(User, pk=student_id, is_verified=True)
     try:
         student_card = StudentCard.objects.get(user=student)
     except StudentCard.DoesNotExist:

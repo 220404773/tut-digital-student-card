@@ -91,7 +91,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'tut_student_card.wsgi.application'
-AUTH_USER_MODEL = 'accounts.StudentUser'
+AUTH_USER_MODEL = 'accounts.User'
 
 # Defaults to SQLite for local development. Set DB_ENGINE (and the other
 # DB_* vars below) to switch to PostgreSQL - e.g. in production - without

@@ -1,11 +1,11 @@
 from django.db import models
 from django.utils import timezone
-from accounts.models import StudentUser
+from accounts.models import User
 
 
 class StudentCard(models.Model):
     """Digital card for a student. One card per student."""
-    user = models.OneToOneField(StudentUser, on_delete=models.CASCADE, related_name='student_card')
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_card')
     card_number = models.CharField(max_length=20, unique=True)
     qr_code = models.ImageField(upload_to='qr_codes/', null=True, blank=True)
     issue_date = models.DateTimeField(auto_now_add=True)
@@ -59,7 +59,7 @@ class CardActivity(models.Model):
     # staff actor. This is the minimum needed for a staff-facing audit trail
     # ("who revoked this card, and when").
     performed_by = models.ForeignKey(
-        StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='card_actions_performed'
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='card_actions_performed'
     )
     
     class Meta:
@@ -71,7 +71,7 @@ class CardActivity(models.Model):
 
 class SignupMetrics(models.Model):
     """Track signup performance metrics."""
-    user = models.ForeignKey(StudentUser, on_delete=models.CASCADE, related_name='signup_metrics')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='signup_metrics')
     signup_start_time = models.DateTimeField()
     signup_end_time = models.DateTimeField()
     signup_duration_seconds = models.FloatField()  # Time taken to complete signup
@@ -88,7 +88,7 @@ class SignupMetrics(models.Model):
 
 class OCRMetrics(models.Model):
     """Track OCR performance and accuracy."""
-    user = models.ForeignKey(StudentUser, on_delete=models.CASCADE, related_name='ocr_metrics')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ocr_metrics')
     ocr_start_time = models.DateTimeField()
     ocr_end_time = models.DateTimeField()
     ocr_duration_seconds = models.FloatField()  # Time taken for OCR processing
@@ -111,7 +111,7 @@ class OCRMetrics(models.Model):
 
 class PageVisit(models.Model):
     """Lightweight site-wide traffic log, used for the admin reporting page."""
-    user = models.ForeignKey(StudentUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='page_visits')
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='page_visits')
     path = models.CharField(max_length=255)
     timestamp = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)

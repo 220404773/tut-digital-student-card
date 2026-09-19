@@ -5,11 +5,11 @@ from django.urls import reverse
 
 from accounts.forms import CustomUserCreationForm
 from cards.models import StudentCard
-from .models import StudentUser
+from .models import User
 
 
 def make_user(email='220404773@tut4life.ac.za', student_number='220404773', password='TestPass123!', **extra):
-    user = StudentUser(email=email, student_number=student_number, first_name='Test', last_name='Student', **extra)
+    user = User(email=email, student_number=student_number, first_name='Test', last_name='Student', **extra)
     user.username = email  # signup() sets this explicitly - see test below for why that matters
     user.set_password(password)
     user.save()
@@ -35,7 +35,7 @@ class SignupUsernameTests(TestCase):
             'password2': 'StrongPass123!',
             'consent': 'on',
         })
-        user = StudentUser.objects.get(student_number='111222333')
+        user = User.objects.get(student_number='111222333')
         self.assertEqual(user.username, 'newstudent@tut4life.ac.za')
 
     def test_two_signups_without_registration_proof_dont_collide(self):
@@ -43,7 +43,7 @@ class SignupUsernameTests(TestCase):
         must not collide on a blank username unique constraint."""
         make_user(email='a@tut4life.ac.za', student_number='1')
         make_user(email='b@tut4life.ac.za', student_number='2')
-        self.assertEqual(StudentUser.objects.count(), 2)
+        self.assertEqual(User.objects.count(), 2)
 
 
 class SignupDurationTests(TestCase):
@@ -121,13 +121,13 @@ class DuplicateAccountRedirectTests(TestCase):
     def test_duplicate_email_redirects_to_login(self):
         response = self._post_signup(email=self.existing.email)
         self.assertRedirects(response, f"{reverse('login')}?email={self.existing.email.replace('@', '%40')}")
-        self.assertEqual(StudentUser.objects.filter(email=self.existing.email).count(), 1)
+        self.assertEqual(User.objects.filter(email=self.existing.email).count(), 1)
 
     def test_duplicate_student_number_redirects_to_login(self):
         response = self._post_signup(student_number=self.existing.student_number)
         self.assertEqual(response.status_code, 302)
         self.assertIn('/accounts/login/', response.url)
-        self.assertEqual(StudentUser.objects.filter(student_number=self.existing.student_number).count(), 1)
+        self.assertEqual(User.objects.filter(student_number=self.existing.student_number).count(), 1)
 
 
 class LoginTests(TestCase):

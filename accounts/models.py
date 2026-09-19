@@ -2,7 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 
-class StudentUser(AbstractUser):
+class User(AbstractUser):
     """Student user with personal and verification information."""
     
     GENDER_CHOICES = [
@@ -54,7 +54,7 @@ class StudentUser(AbstractUser):
 
 class DeletedStudentLog(models.Model):
     """Snapshot of a student's identifying info, captured at the moment
-    they're deleted from Django admin. Deleting a StudentUser cascades and
+    they're deleted from Django admin. Deleting a User cascades and
     removes their StudentCard/CardActivity/metrics rows too - without this,
     there would be no record a student ever existed once that happens.
     Written explicitly by StudentUserAdmin.delete_model()/delete_queryset()
@@ -72,7 +72,7 @@ class DeletedStudentLog(models.Model):
     was_email_confirmed = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(auto_now_add=True)
     deleted_by = models.ForeignKey(
-        StudentUser, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
     )
     # Set once staff recreate this student's account from this snapshot
     # (see cards/views.py:reissue_deleted_student) - guards the report from

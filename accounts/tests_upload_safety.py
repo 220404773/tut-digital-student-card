@@ -10,7 +10,7 @@ from django.test import TestCase
 from PIL import Image
 
 from accounts.forms import CustomUserChangeForm
-from accounts.models import StudentUser
+from accounts.models import User
 
 
 def real_image_bytes(fmt):
@@ -28,7 +28,7 @@ REAL_JPG = real_image_bytes('JPEG')
 
 class ProfilePictureUploadSafetyTests(TestCase):
     def setUp(self):
-        self.user = StudentUser.objects.create_user(
+        self.user = User.objects.create_user(
             username='pic@tut4life.ac.za', email='pic@tut4life.ac.za',
             student_number='220404780', password='StrongPass123!',
         )

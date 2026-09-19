@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from accounts.models import StudentUser
+from accounts.models import User
 
 
 class LegalPagesTest(TestCase):
@@ -48,11 +48,11 @@ class SignupConsentTest(TestCase):
         del data['consent']
         response = self.client.post(reverse('signup'), data)
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(StudentUser.objects.filter(student_number='444555666').exists())
+        self.assertFalse(User.objects.filter(student_number='444555666').exists())
 
     def test_signup_with_consent_records_the_timestamp(self):
         self.client.post(reverse('signup'), self._payload())
-        user = StudentUser.objects.get(student_number='444555666')
+        user = User.objects.get(student_number='444555666')
         self.assertIsNotNone(user.consent_given_at)
 
     def test_signup_page_links_to_privacy_and_terms(self):

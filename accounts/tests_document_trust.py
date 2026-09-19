@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.models import StudentUser
+from accounts.models import User
 from cards.models import StudentCard
 
 
@@ -18,14 +18,14 @@ def make_verified_user(**overrides):
     defaults = {
         'username': 'verified@tut4life.ac.za',
         'email': 'verified@tut4life.ac.za',
-        'student_number': '220404773',
+        'student_number': '220202117',
         'first_name': 'Ver',
         'last_name': 'Ified',
         'is_verified': True,
         'email_confirmed': False,
     }
     defaults.update(overrides)
-    user = StudentUser.objects.create_user(password='StrongPass123!', **defaults)
+    user = User.objects.create_user(password='StrongPass123!', **defaults)
     return user
 
 
@@ -87,7 +87,7 @@ class ProofDocumentReuseTests(TestCase):
 
     def test_a_document_hash_is_bound_to_only_one_account(self):
         make_verified_user(registration_proof_hash='a' * 64)
-        reused = StudentUser.objects.filter(registration_proof_hash='a' * 64)
+        reused = User.objects.filter(registration_proof_hash='a' * 64)
         self.assertEqual(reused.count(), 1)
 
     def test_signup_rejects_a_file_already_used_by_another_account(self):
@@ -111,7 +111,7 @@ class ProofDocumentReuseTests(TestCase):
         })
 
         self.assertContains(response, 'already been used to register another account')
-        self.assertFalse(StudentUser.objects.filter(student_number='220404775').exists())
+        self.assertFalse(User.objects.filter(student_number='220404775').exists())
 
     def test_rejected_document_is_not_consumed(self):
         """A document that fails verification must not be recorded as used,

@@ -11,7 +11,7 @@ from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, Dura
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
-from accounts.models import StudentUser, DeletedStudentLog
+from accounts.models import User, DeletedStudentLog
 from accounts.views import split_full_name, send_confirmation_email
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import get_card_display_data, build_card_verification_url, generate_student_card
@@ -197,11 +197,11 @@ def performance_dashboard(request):
     confirmation_duration = ExpressionWrapper(
         F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
     )
-    email_confirmation_stats = StudentUser.objects.filter(is_staff=False).aggregate(
+    email_confirmation_stats = User.objects.filter(is_staff=False).aggregate(
         total_students=Count('id'),
         confirmed_count=Count('id', filter=Q(email_confirmed=True)),
     )
-    confirmation_times = StudentUser.objects.filter(
+    confirmation_times = User.objects.filter(
         is_staff=False, email_confirmed=True, email_confirmed_at__isnull=False
     ).annotate(confirmation_duration=confirmation_duration).aggregate(
         avg_confirmation_time=Avg('confirmation_duration'),
@@ -315,7 +315,7 @@ def report_email_confirmation(request):
     confirmation_duration = ExpressionWrapper(
         F('email_confirmed_at') - F('date_joined'), output_field=DurationField()
     )
-    students = StudentUser.objects.filter(is_staff=False).annotate(confirmation_duration=confirmation_duration)
+    students = User.objects.filter(is_staff=False).annotate(confirmation_duration=confirmation_duration)
 
     if filter_type == 'confirmed':
         title = 'Email Confirmed'
@@ -401,7 +401,7 @@ def report_deleted_students(request):
 @staff_member_required(login_url='login')
 def reissue_deleted_student(request, log_id):
     """Recreates a deleted student's account from the snapshot captured at
-    deletion time, and issues them a fresh card - the actual StudentUser row
+    deletion time, and issues them a fresh card - the actual User row
     (and its old card/QR code) is long gone, so this is a genuine recreate,
     not a literal "undo delete". The new account gets an unusable password;
     a set-password email (the same flow/templates as ordinary password
@@ -416,12 +416,12 @@ def reissue_deleted_student(request, log_id):
         messages.warning(request, f'{entry.full_name} was already restored on {entry.restored_at:%Y-%m-%d %H:%M}.')
         return redirect('report_deleted_students')
 
-    if StudentUser.objects.filter(Q(student_number=entry.student_number) | Q(email__iexact=entry.email)).exists():
+    if User.objects.filter(Q(student_number=entry.student_number) | Q(email__iexact=entry.email)).exists():
         messages.error(request, f'An account with student number {entry.student_number} or email {entry.email} already exists - cannot restore.')
         return redirect('report_deleted_students')
 
     first_name, last_name = split_full_name(entry.full_name)
-    student = StudentUser.objects.create(
+    student = User.objects.create(
         email=entry.email,
         username=entry.email,
         student_number=entry.student_number,
@@ -478,7 +478,7 @@ def report_expired_cards(request):
     their expiry_date passed - self-healing each on the way through so
     this list is always accurate, not just whatever happened to be touched.
     The Reissue button reuses the same admin action staff already use for
-    a lost/stolen card - the StudentUser row here is very much still alive,
+    a lost/stolen card - the User row here is very much still alive,
     unlike the Deleted Students case.
     """
     today = timezone.now().date()
@@ -508,7 +508,7 @@ def report_visit_users(request):
     """Drill-down behind the Distinct Users tile - one row per user who has
     visited the site, with their visit count and most recent visit."""
     visitors = (
-        StudentUser.objects
+        User.objects
         .filter(page_visits__isnull=False)
         .annotate(visit_count=Count('page_visits'), last_visit=Max('page_visits__timestamp'))
         .order_by('-last_visit')
@@ -520,7 +520,7 @@ def report_visit_users(request):
 @staff_member_required(login_url='login')
 def report_user_visits(request, user_id):
     """Drill-down behind a specific user's row - their full website visit history."""
-    visitor = get_object_or_404(StudentUser, pk=user_id)
+    visitor = get_object_or_404(User, pk=user_id)
     visits = PageVisit.objects.filter(user=visitor).order_by('-timestamp')
 
     return render(request, 'cards/report_user_visits.html', {
@@ -534,7 +534,7 @@ def staff_student_list(request):
     """Staff-only directory of all students, so admins can find and drill
     into any student's profile and card without using the raw Django admin."""
     query = request.GET.get('q', '')
-    students = StudentUser.objects.filter(is_staff=False)
+    students = User.objects.filter(is_staff=False)
     if query:
         students = students.filter(
             Q(first_name__icontains=query) |
@@ -554,7 +554,7 @@ def staff_student_detail(request, user_id):
     """Staff-only read view of a single student's profile, card, and activity.
     Editing is delegated to the Django admin change form rather than
     duplicating a second edit UI."""
-    student = get_object_or_404(StudentUser, pk=user_id)
+    student = get_object_or_404(User, pk=user_id)
     student_card = StudentCard.objects.filter(user=student).first()
     if student_card:
         student_card.refresh_status()
