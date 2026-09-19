@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm, PasswordChangeForm
+from django.core.files.uploadedfile import UploadedFile
 from .models import StudentUser
 
 
@@ -130,6 +131,42 @@ class CustomUserChangeForm(AccessibleFormMixin, UserChangeForm):
         for field in self.fields:
             self.fields[field].widget.attrs.update({'class': 'form-control'})
         self.apply_accessibility_attrs()
+
+    # Same signature check used on registration_proof - ImageField's default
+    # validation only confirms Pillow can decode the file as *some* image, it
+    # doesn't restrict which format, and it's still validating file content
+    # against an unrestricted extension. This is the field every other
+    # student's browser renders (dashboard, staff pages, public verify page),
+    # so it gets the same content-matches-extension check as the document
+    # upload, not just Pillow's implicit one.
+    PICTURE_SIGNATURES = {
+        'jpg': (b'\xff\xd8\xff',),
+        'jpeg': (b'\xff\xd8\xff',),
+        'png': (b'\x89PNG\r\n\x1a\n',),
+    }
+
+    def clean_profile_picture(self):
+        picture = self.cleaned_data.get('profile_picture')
+        # A plain edit that doesn't touch the photo returns the existing,
+        # already-stored FieldFile here, not a fresh upload - only a real
+        # UploadedFile (this request's multipart data) needs re-validating.
+        if not picture or not isinstance(picture, UploadedFile):
+            return picture
+
+        if picture.size > 5242880:
+            raise forms.ValidationError('Image exceeds 5MB limit.')
+
+        ext = picture.name.rsplit('.', 1)[-1].lower() if '.' in picture.name else ''
+        if ext not in self.PICTURE_SIGNATURES:
+            raise forms.ValidationError('Invalid image format. Allowed: JPG, PNG.')
+
+        picture.seek(0)
+        header = picture.read(8)
+        picture.seek(0)
+        if not any(header.startswith(sig) for sig in self.PICTURE_SIGNATURES[ext]):
+            raise forms.ValidationError('This file does not look like a valid JPG or PNG. Please upload the original file.')
+
+        return picture
 
 
 class StyledPasswordChangeForm(AccessibleFormMixin, PasswordChangeForm):

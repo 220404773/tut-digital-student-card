@@ -19,6 +19,16 @@ ALLOWED_HOSTS = config(
 # http:// links even when the site is served over https://.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Stops a browser from re-guessing a served file's type from its content and
+# rendering it as something more dangerous than its declared Content-Type -
+# the standard defence against a crafted "image" that's actually
+# HTML/JS being executed in-browser when linked directly. Matters here
+# specifically because profile_picture is served back to other users'
+# browsers (dashboard, staff pages, the public verify page), not just the
+# uploader's own. Django defaults this True already; set explicitly so it's
+# a visible, deliberate control rather than an implicit framework default.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
