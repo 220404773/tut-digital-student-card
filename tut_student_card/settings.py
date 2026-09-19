@@ -184,4 +184,15 @@ GOOGLE_WALLET_CREDENTIALS_JSON = config('GOOGLE_WALLET_CREDENTIALS_JSON', defaul
 OCR_ENABLED = True
 OCR_CONFIDENCE_THRESHOLD = 0.8
 NVIDIA_API_KEY = config('NVIDIA_API_KEY', default='')
+
+# Document verification proves a proof-of-registration document was uploaded
+# and could be read - it cannot prove the uploader is the person named on it,
+# because nothing checks the student number against an institutional record.
+# Requiring email confirmation first closes the most practical version of that
+# gap: the account email is {student_number}@tut4life.ac.za, so confirming it
+# proves control of the mailbox tied to that student number.
+# Set False only for an offline demo where inbox access isn't available.
+REQUIRE_EMAIL_CONFIRMATION_FOR_CARD = config(
+    'REQUIRE_EMAIL_CONFIRMATION_FOR_CARD', default=True, cast=bool
+)
 TESSERACT_CMD = config('TESSERACT_CMD', default='')

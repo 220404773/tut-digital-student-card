@@ -34,6 +34,12 @@ class StudentUser(AbstractUser):
     # the checkbox alone isn't enough - the timestamp is the actual record.
     consent_given_at = models.DateTimeField(null=True, blank=True)
 
+    # SHA-256 of the proof-of-registration file this account was verified
+    # with. The file itself is deleted straight after processing (POPIA), so
+    # this stores only the fingerprint - enough to notice the same file being
+    # submitted for a second account, without retaining the document.
+    registration_proof_hash = models.CharField(max_length=64, blank=True, default='', db_index=True)
+
     registration_end_date = models.DateField(null=True, blank=True)
     
     class Meta:

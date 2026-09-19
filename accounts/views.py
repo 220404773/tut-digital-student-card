@@ -257,7 +257,19 @@ def signup(request):
             if 'registration_proof' in request.FILES:
                 registration_proof = request.FILES['registration_proof']
                 file_upload_size_mb = registration_proof.size / (1024 * 1024)  # Convert to MB
-                
+
+                # One document, one account. The same file being submitted for
+                # a second account means either a shared document or a reused
+                # one, and neither should silently produce a second card.
+                proof_hash = hash_uploaded_file(registration_proof)
+                if StudentUser.objects.filter(registration_proof_hash=proof_hash).exists():
+                    messages.warning(
+                        request,
+                        'This exact document has already been used to register another account. '
+                        'Please upload your own proof of registration.'
+                    )
+                    return render(request, 'accounts/signup.html', {'form': form})
+
                 # Run OCR verification - reuse the live-preview result if this
                 # is the same file the student already previewed, instead of
                 # running OCR (and the LLM call) a second time.
@@ -325,6 +337,10 @@ def signup(request):
                             return render(request, 'accounts/signup.html', {'form': form})
 
                         user.is_verified = True
+                        # Only bind the document to the account once it has
+                        # actually verified one - a rejected document isn't
+                        # "used up", so the student can retry with the same file.
+                        user.registration_proof_hash = proof_hash
                         if not user.student_number and ocr_result.get('student_number'):
                             user.student_number = ocr_result.get('student_number')
                         if ocr_result.get('full_name'):
@@ -393,8 +409,17 @@ def signup(request):
                     print(f"Error tracking OCR metrics: {str(e)}")
                 print(f"OCRMetrics.create() took {(timezone.now() - _t_ocr_metrics).total_seconds():.2f}s")
             
-            # Generate digital card if verified
-            if user.is_verified:
+            # Generate digital card if verified. When email confirmation is
+            # required, the card is deferred until confirm_email() runs - the
+            # document alone never proves the uploader is the person named on
+            # it, so control of {student_number}@tut4life.ac.za is used as the
+            # second factor before a card exists.
+            if user.is_verified and settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD:
+                messages.info(
+                    request,
+                    'Your registration was verified. Confirm your email address to receive your digital student card.'
+                )
+            elif user.is_verified:
                 try:
                     card_gen_start = timezone.now()
                     generate_student_card(user, request)
@@ -512,6 +537,18 @@ def confirm_email(request, uidb64, token):
             user.email_confirmed_at = timezone.now()
             user.save()
             messages.success(request, 'Your email address has been confirmed!')
+            # Card issue is deferred to this point when confirmation is
+            # required, so this is where a verified student finally gets one.
+            if (
+                settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD
+                and user.is_verified
+                and not StudentCard.objects.filter(user=user).exists()
+            ):
+                try:
+                    generate_student_card(user, request)
+                    messages.success(request, 'Your digital student card has been generated!')
+                except Exception as e:
+                    messages.warning(request, f'Email confirmed, but card generation failed: {str(e)}')
         elif already_confirmed:
             messages.success(request, 'Your email address is already confirmed.')
         else:

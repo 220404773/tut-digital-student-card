@@ -150,10 +150,19 @@
                 {% endif %}
 
             {% else %}
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> 
-                    <strong>Card Pending:</strong> Your digital card will be generated once your registration is verified.
-                </div>
+                {% if user.is_verified and not user.email_confirmed %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                        <strong>Card Pending:</strong> Your registration has been verified. Confirm your
+                        email address using the link we sent to {{ user.email }}, and your digital card
+                        will be issued immediately.
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                        <strong>Card Pending:</strong> Your digital card will be generated once your registration is verified.
+                    </div>
+                {% endif %}
             {% endif %}
         </div>
         
