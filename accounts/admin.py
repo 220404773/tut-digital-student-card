@@ -104,12 +104,12 @@ class StudentUserAdmin(UserAdmin):
             path(
                 '<int:student_id>/revoke-card/',
                 self.admin_site.admin_view(self.revoke_card_view),
-                name='accounts_studentuser_revoke_card',
+                name='accounts_user_revoke_card',
             ),
             path(
                 '<int:student_id>/reissue-card/',
                 self.admin_site.admin_view(self.reissue_card_view),
-                name='accounts_studentuser_reissue_card',
+                name='accounts_user_reissue_card',
             ),
         ]
         return custom_urls + super().get_urls()
@@ -122,7 +122,7 @@ class StudentUserAdmin(UserAdmin):
             self.message_user(request, f"Revoked {student.get_full_name_display()}'s digital card.")
         else:
             self.message_user(request, f'{student.get_full_name_display()} has no card to revoke.', level=messages.WARNING)
-        return redirect('admin:accounts_studentuser_change', student.pk)
+        return redirect('admin:accounts_user_change', student.pk)
 
     def reissue_card_view(self, request, student_id):
         if request.method != 'POST':
@@ -135,7 +135,7 @@ class StudentUserAdmin(UserAdmin):
             self.message_user(request, f'{student.get_full_name_display()} had no card yet - issued one.')
         else:
             self.message_user(request, f"Couldn't issue a card for {student.get_full_name_display()}.", level=messages.ERROR)
-        return redirect('admin:accounts_studentuser_change', student.pk)
+        return redirect('admin:accounts_user_change', student.pk)
 
     def _log_deletion(self, obj, deleted_by):
         # Deleting a User cascades - their StudentCard, CardActivity,
