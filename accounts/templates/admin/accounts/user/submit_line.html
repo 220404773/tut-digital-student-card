@@ -1,4 +1,5 @@
 {% extends "admin/submit_line.html" %}
+{% load static %}
 
 {% block submit-row %}
 <style>
@@ -12,14 +13,15 @@
 {{ block.super }}
 {% if original %}
     <form method="post" action="{% url 'admin:accounts_user_revoke_card' original.pk %}" style="display:inline;"
-          onsubmit="return confirm('Revoke {{ original.get_full_name_display }}\'s digital card? It will immediately show as invalid when scanned.');">
+          data-confirm="Revoke {{ original.get_full_name_display }}'s digital card? It will immediately show as invalid when scanned.">
         {% csrf_token %}
         <input type="submit" class="button" value="Revoke Card" style="background:#a4231c; color:#fff;">
     </form>
     <form method="post" action="{% url 'admin:accounts_user_reissue_card' original.pk %}" style="display:inline;"
-          onsubmit="return confirm('Reissue a new card number and QR code for {{ original.get_full_name_display }}? Their old card number will stop working.');">
+          data-confirm="Reissue a new card number and QR code for {{ original.get_full_name_display }}? Their old card number will stop working.">
         {% csrf_token %}
         <input type="submit" class="button" value="Reissue Card" style="background:#198754; color:#fff;">
     </form>
+    <script src="{% static 'js/confirm-submit.js' %}"></script>
 {% endif %}
 {% endblock %}

@@ -68,12 +68,14 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'crispy_forms',
     'crispy_bootstrap5',
+    'csp',
     'accounts',
     'cards',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'csp.middleware.CSPMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -171,6 +173,43 @@ if AWS_STORAGE_BUCKET_NAME:
     AWS_S3_OBJECT_PARAMETERS = {'CacheControl': 'max-age=86400'}
     STORAGES['default'] = {'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage'}
     MEDIA_URL = f'{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/'
+
+# Content-Security-Policy: the browser refuses to run or load anything not
+# listed here, so injected markup can't execute script even if it slips past
+# template escaping. Inline <script> blocks carry a per-request nonce
+# ({{ request.csp_nonce }}); inline style attributes are still allowed, as the
+# templates use them throughout and they can't run code.
+# connect-src repeats the CDNs because the service worker (static/sw.js)
+# re-fetches every request, and its fetches are checked against connect-src.
+from csp.constants import NONCE, NONE, SELF, UNSAFE_INLINE
+
+_JSDELIVR = 'https://cdn.jsdelivr.net'
+_CDNJS = 'https://cdnjs.cloudflare.com'
+_MEDIA_ORIGINS = [AWS_S3_ENDPOINT_URL] if AWS_STORAGE_BUCKET_NAME else []
+_CSP = {
+    'DIRECTIVES': {
+        'default-src': [SELF],
+        'script-src': [SELF, NONCE, _JSDELIVR],
+        'style-src': [SELF, UNSAFE_INLINE, _JSDELIVR, _CDNJS],
+        'font-src': [SELF, _CDNJS],
+        # data: is Bootstrap's own inline SVG icons (select arrows, checkboxes).
+        'img-src': [SELF, 'data:', *_MEDIA_ORIGINS],
+        'connect-src': [SELF, _JSDELIVR, _CDNJS, *_MEDIA_ORIGINS],
+        'worker-src': [SELF],
+        'manifest-src': [SELF],
+        'object-src': [NONE],
+        'base-uri': [SELF],
+        'form-action': [SELF],
+        'frame-ancestors': [NONE],
+    },
+}
+# Report-only first: violations are logged in the browser console but nothing
+# is blocked, so a missed resource shows up without breaking a page. Set
+# CSP_REPORT_ONLY=False to enforce once the console stays clean.
+if config('CSP_REPORT_ONLY', default=True, cast=bool):
+    CONTENT_SECURITY_POLICY_REPORT_ONLY = _CSP
+else:
+    CONTENT_SECURITY_POLICY = _CSP
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

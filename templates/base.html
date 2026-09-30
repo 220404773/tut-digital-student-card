@@ -224,7 +224,8 @@
     </footer>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+    <script src="{% static 'js/confirm-submit.js' %}"></script>
+    <script nonce="{{ request.csp_nonce }}">
         document.querySelectorAll('.auto-dismiss-alert').forEach(function (alertEl) {
             var delay = parseInt(alertEl.dataset.autodismissMs, 10) || 10000;
             setTimeout(function () {
@@ -295,7 +296,7 @@
     </script>
     {% block extra_js %}{% endblock %}
 
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', function () {
                 navigator.serviceWorker.register("{% url 'service_worker' %}");
@@ -303,7 +304,7 @@
         }
     </script>
 
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         (function () {
             var COOKIE_NAME = 'cookie_notice_ack';
             var notice = document.getElementById('cookie-notice');
@@ -328,7 +329,7 @@
         })();
     </script>
 
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         (function () {
             var DISMISS_KEY = 'pwaInstallDismissedAt';
             var DISMISS_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000; // don't re-nag for 2 weeks after "No thanks"
@@ -395,7 +396,7 @@
     </script>
 
     {% if user.is_authenticated %}
-    <script>
+    <script nonce="{{ request.csp_nonce }}">
         (function () {
             // How long (seconds) is actually left on the session right now -
             // SESSION_SAVE_EVERY_REQUEST means this number is fresh as of

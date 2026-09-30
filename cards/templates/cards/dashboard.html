@@ -45,7 +45,7 @@
                     {% if confirmation_cooldown_remaining > 0 %}Resend available in {{ confirmation_cooldown_remaining }}s{% else %}Resend email{% endif %}
                 </button>
             </form>
-            <script>
+            <script nonce="{{ request.csp_nonce }}">
                 (function() {
                     var btn = document.getElementById('resend-confirmation-btn');
                     var remaining = parseInt(btn.dataset.remaining, 10) || 0;
