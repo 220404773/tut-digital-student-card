@@ -260,23 +260,6 @@ GOOGLE_WALLET_CREDENTIALS_JSON = config('GOOGLE_WALLET_CREDENTIALS_JSON', defaul
 # OCR Settings
 OCR_ENABLED = True
 OCR_CONFIDENCE_THRESHOLD = 0.8
-
-# Where document text is sent for AI extraction - an explicit choice, because
-# POPIA s72 restricts sending personal information outside South Africa:
-#   'local'  - a model on a machine we run (Ollama at LLM_BASE_URL). Text stays
-#              wherever that machine is, so host it in South Africa.
-#   'none'   - no LLM at all; rule-based extraction only. Nothing leaves the server.
-#   'nvidia' - NVIDIA's hosted API, outside South Africa (a cross-border transfer).
-# 'local' and 'none' never fall back to NVIDIA, even if a key is configured.
-LLM_PROVIDER = config('LLM_PROVIDER', default='nvidia')
-if LLM_PROVIDER not in ('local', 'none', 'nvidia'):
-    from django.core.exceptions import ImproperlyConfigured
-    raise ImproperlyConfigured(f"LLM_PROVIDER must be 'local', 'none' or 'nvidia', not {LLM_PROVIDER!r}.")
-LLM_BASE_URL = config('LLM_BASE_URL', default='http://localhost:11434')
-LLM_MODEL = config('LLM_MODEL', default='qwen2.5:3b')
-# A CPU-only machine is much slower than NVIDIA's GPUs, so the local model gets
-# longer before extraction gives up and falls back to the regex path.
-LLM_TIMEOUT_SECONDS = config('LLM_TIMEOUT_SECONDS', default=60, cast=int)
 NVIDIA_API_KEY = config('NVIDIA_API_KEY', default='')
 
 # Document verification proves a proof-of-registration document was uploaded

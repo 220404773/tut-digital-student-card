@@ -63,7 +63,7 @@ class Command(BaseCommand):
         if not rows:
             raise CommandError('labels.csv has no rows.')
 
-        self.stdout.write(f'LLM_PROVIDER={settings.LLM_PROVIDER} - evaluating {len(rows)} document(s)\n')
+        self.stdout.write(f'Evaluating {len(rows)} document(s)\n')
         self.stdout.write(f'{"file":<28}{"label":<9}{"outcome":<12}{"class":<7}{"number":<8}{"name":<6}{"end date":<9}')
 
         correct = 0

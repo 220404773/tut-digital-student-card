@@ -65,54 +65,8 @@ def get_nvidia_api_key():
     return getattr(settings, 'NVIDIA_API_KEY', '') or os.getenv('NVIDIA_API_KEY', '')
 
 
-class LocalLLM:
-    """Talks to a self-hosted Ollama server, so document text only ever
-    travels to a machine we run. Uses the standard library rather than
-    another client package, and exposes the same invoke(...).content shape as
-    ChatNVIDIA so extract_with_llm() doesn't care which one it has."""
-
-    def __init__(self, base_url, model, timeout):
-        self.url = base_url.rstrip('/') + '/api/chat'
-        self.model = model
-        self.timeout = timeout
-
-    def invoke(self, prompt, response_format=None):
-        from types import SimpleNamespace
-        from urllib.request import Request, urlopen
-
-        payload = {
-            'model': self.model,
-            'messages': [{'role': 'user', 'content': prompt}],
-            'stream': False,
-            # Extraction should be repeatable: the same document gives the same answer.
-            'options': {'temperature': 0},
-        }
-        if response_format and response_format.get('type') == 'json_object':
-            payload['format'] = 'json'
-
-        request = Request(
-            self.url,
-            data=json.dumps(payload).encode('utf-8'),
-            headers={'Content-Type': 'application/json'},
-        )
-        with urlopen(request, timeout=self.timeout) as response:
-            body = json.loads(response.read().decode('utf-8'))
-        return SimpleNamespace(content=body['message']['content'])
-
-
 def get_llm_client():
-    """Return the chat model LLM_PROVIDER names, or None to use rule-based
-    extraction only. 'local' and 'none' return before the NVIDIA code is
-    reached, so a configured NVIDIA key can never send text abroad by accident."""
-    provider = getattr(settings, 'LLM_PROVIDER', 'nvidia')
-    if provider == 'none':
-        return None
-    if provider == 'local':
-        return LocalLLM(settings.LLM_BASE_URL, settings.LLM_MODEL, settings.LLM_TIMEOUT_SECONDS)
-    if provider != 'nvidia':
-        # A typo must not quietly mean "send it to NVIDIA".
-        raise ValueError(f"Unknown LLM_PROVIDER {provider!r} - use 'local', 'none' or 'nvidia'.")
-
+    """Create the NVIDIA chat model only when the dependency and key are available."""
     api_key = get_nvidia_api_key()
     if not LLM_AVAILABLE or not api_key:
         return None
