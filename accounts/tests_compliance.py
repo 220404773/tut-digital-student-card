@@ -28,7 +28,7 @@ class LegalPagesTest(TestCase):
 class SignupConsentTest(TestCase):
     def _payload(self, **overrides):
         data = {
-            'email': 'consent@tut4life.ac.za',
+            'email': '444555666@tut4life.ac.za',
             'first_name': 'Con',
             'last_name': 'Sent',
             'student_number': '444555666',

@@ -25,7 +25,7 @@ class SignupUsernameTests(TestCase):
         from django.core.files.uploadedfile import SimpleUploadedFile
         proof = SimpleUploadedFile('proof.pdf', b'%PDF-1.4\n%minimal placeholder pdf content', content_type='application/pdf')
         response = self.client.post(reverse('signup'), {
-            'email': 'newstudent@tut4life.ac.za',
+            'email': '111222333@tut4life.ac.za',
             'first_name': 'New',
             'last_name': 'Student',
             'student_number': '111222333',
@@ -36,7 +36,7 @@ class SignupUsernameTests(TestCase):
             'consent': 'on',
         })
         user = User.objects.get(student_number='111222333')
-        self.assertEqual(user.username, 'newstudent@tut4life.ac.za')
+        self.assertEqual(user.username, '111222333@tut4life.ac.za')
 
     def test_two_signups_without_registration_proof_dont_collide(self):
         """Two accounts created without ever filling in username manually
@@ -60,7 +60,7 @@ class SignupDurationTests(TestCase):
         upload_start_ms = int(time.time() * 1000) - 15000  # 15s before this request
 
         self.client.post(reverse('signup'), {
-            'email': 'timed@tut4life.ac.za',
+            'email': '999888777@tut4life.ac.za',
             'first_name': 'Timed',
             'last_name': 'Student',
             'student_number': '999888777',
@@ -81,7 +81,7 @@ class SignupDurationTests(TestCase):
 
         proof = SimpleUploadedFile('proof.pdf', b'%PDF-1.4\n%minimal placeholder pdf content', content_type='application/pdf')
         self.client.post(reverse('signup'), {
-            'email': 'notiming@tut4life.ac.za',
+            'email': '555444333@tut4life.ac.za',
             'first_name': 'No',
             'last_name': 'Timing',
             'student_number': '555444333',

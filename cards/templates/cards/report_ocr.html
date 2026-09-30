@@ -32,7 +32,9 @@
                         <td>{{ ocr.document_classification_confidence|floatformat:1 }}%</td>
                         <td>{{ ocr.ocr_duration_seconds|floatformat:2 }}s</td>
                         <td>
-                            {% if ocr.is_accurate %}
+                            {% if ocr.student_number_mismatch %}
+                                <span class="badge bg-warning text-dark">Student No. Mismatch</span>
+                            {% elif ocr.is_accurate %}
                                 <span class="badge bg-success">Accurate</span>
                             {% elif ocr.manual_correction_required %}
                                 <span class="badge bg-warning text-dark">Needs Review</span>

@@ -97,6 +97,9 @@ class OCRMetrics(models.Model):
     extracted_full_name = models.CharField(max_length=255, null=True, blank=True)
     is_accurate = models.BooleanField(default=False)  # Was OCR result accurate?
     manual_correction_required = models.BooleanField(default=False)
+    # The document read cleanly but names a different student number than the
+    # one typed at signup (or none at all) - held for review, not auto-verified.
+    student_number_mismatch = models.BooleanField(default=False)
     document_quality_score = models.FloatField(default=0)  # 0-100 document quality
     document_classification_confidence = models.FloatField(default=0)  # 0-100 "is this a TUT proof of registration" confidence
     created_at = models.DateTimeField(auto_now_add=True)

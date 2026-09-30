@@ -99,7 +99,7 @@ class ProofDocumentReuseTests(TestCase):
         make_verified_user(registration_proof_hash=digest)
 
         response = self.client.post(reverse('signup'), {
-            'email': 'second@tut4life.ac.za',
+            'email': '220404775@tut4life.ac.za',
             'first_name': 'Second',
             'last_name': 'Student',
             'student_number': '220404775',

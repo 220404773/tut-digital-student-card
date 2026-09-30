@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm, PasswordChangeForm
 from django.core.files.uploadedfile import UploadedFile
 from .models import User
@@ -81,7 +82,21 @@ class CustomUserCreationForm(AccessibleFormMixin, UserCreationForm):
         if User.objects.filter(student_number=student_number).exists():
             raise forms.ValidationError('Student number already registered.')
         return student_number
-    
+
+    def clean(self):
+        cleaned_data = super().clean()
+        # Email confirmation is only worth anything as proof of identity if the
+        # mailbox belongs to the student number being claimed. Left free-form,
+        # someone could pair another student's document and number with their
+        # own Gmail, confirm that, and be issued the other student's card.
+        email = cleaned_data.get('email')
+        student_number = cleaned_data.get('student_number')
+        if settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD and email and student_number:
+            expected = f'{student_number.strip()}@tut4life.ac.za'
+            if email.strip().lower() != expected.lower():
+                self.add_error('email', f'Use your TUT student email address for this student number ({expected}).')
+        return cleaned_data
+
     # Magic bytes for each allowed type - checked against actual file content,
     # not just the filename extension, which anyone can rename.
     FILE_SIGNATURES = {

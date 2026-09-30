@@ -1,3 +1,4 @@
+import re
 from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
@@ -35,6 +36,13 @@ _OCR_CACHE_FIELDS = ('error', 'student_number', 'full_name', 'email', 'period', 
 
 def _scoped_ocr_cache(ocr_result):
     return {key: ocr_result[key] for key in _OCR_CACHE_FIELDS if key in ocr_result}
+
+
+def _normalise_student_number(value):
+    """Compare student numbers on their characters only - OCR and typing
+    both introduce stray spaces, dashes and case differences that don't
+    change which student the number identifies."""
+    return re.sub(r'[^0-9A-Za-z]', '', value or '').upper()
 
 # Minimum wait between confirmation emails to the same account - matches the
 # ~60s resend cooldown most mail-sending flows use (GitHub, Google account
@@ -252,6 +260,7 @@ def signup(request):
             file_upload_size_mb = 0
             ocr_start_time = None
             ocr_duration = 0
+            student_number_mismatch = False
             
             # Process the uploaded registration proof with OCR
             if 'registration_proof' in request.FILES:
@@ -336,22 +345,45 @@ def signup(request):
                             delete_registration_proof(user)
                             return render(request, 'accounts/signup.html', {'form': form})
 
-                        user.is_verified = True
-                        # Only bind the document to the account once it has
-                        # actually verified one - a rejected document isn't
-                        # "used up", so the student can retry with the same file.
-                        user.registration_proof_hash = proof_hash
-                        if not user.student_number and ocr_result.get('student_number'):
-                            user.student_number = ocr_result.get('student_number')
-                        if ocr_result.get('full_name'):
-                            first_name, last_name = split_full_name(ocr_result.get('full_name'))
-                            if not user.first_name and first_name:
-                                user.first_name = first_name
-                            if not user.last_name and last_name:
-                                user.last_name = last_name
-                        user.registration_end_date = registration_end_date
+                        # The form pre-fills the student number from the
+                        # document, but the student can edit it before
+                        # submitting - so without this, a classmate's genuine
+                        # document plus your own typed number verified you.
+                        # A mismatch (or a number the OCR couldn't read at
+                        # all) goes to a human rather than being rejected
+                        # outright, because a single misread digit would
+                        # otherwise lock out a legitimate student.
+                        extracted_number = _normalise_student_number(ocr_result.get('student_number'))
+                        if extracted_number != _normalise_student_number(user.student_number):
+                            student_number_mismatch = True
+                            user.is_verified = False
+                            if extracted_number:
+                                messages.warning(
+                                    request,
+                                    'The student number on your document does not match the one you entered. '
+                                    'Your account has been created and sent to an administrator for manual review.'
+                                )
+                            else:
+                                messages.warning(
+                                    request,
+                                    'We could not read a student number from your document. '
+                                    'Your account has been created and sent to an administrator for manual review.'
+                                )
+                        else:
+                            user.is_verified = True
+                            # Only bind the document to the account once it has
+                            # actually verified one - a rejected document isn't
+                            # "used up", so the student can retry with the same file.
+                            user.registration_proof_hash = proof_hash
+                            if ocr_result.get('full_name'):
+                                first_name, last_name = split_full_name(ocr_result.get('full_name'))
+                                if not user.first_name and first_name:
+                                    user.first_name = first_name
+                                if not user.last_name and last_name:
+                                    user.last_name = last_name
+                            user.registration_end_date = registration_end_date
 
-                        messages.success(request, 'TUT Proof of Registration verified successfully!')
+                            messages.success(request, 'TUT Proof of Registration verified successfully!')
                     else:
                         user.is_verified = False
                         messages.warning(request, 'OCR verification partially matched. Admin review required.')
@@ -401,7 +433,10 @@ def signup(request):
                         # is_verified above). 75-79% is close enough that a
                         # human should glance at it rather than write it off
                         # outright; below 75% is treated as a clean failure.
-                        manual_correction_required=75 <= confidence_percent < 80,
+                        # A student-number mismatch always needs a human,
+                        # whatever the confidence.
+                        manual_correction_required=(75 <= confidence_percent < 80) or student_number_mismatch,
+                        student_number_mismatch=student_number_mismatch,
                         document_quality_score=ocr_result.get('quality_score', 0) * 100,
                         document_classification_confidence=ocr_result.get('document_classification_confidence', 0) * 100,
                     )
@@ -597,6 +632,19 @@ def reupload_proof(request):
     if request.user.is_staff:
         return redirect('performance_dashboard')
 
+    # A revoked card was switched off deliberately by an administrator, not by
+    # time running out - uploading a document must not be a way around that.
+    # Checked before the GET render too, so the page doesn't invite an upload
+    # that can never succeed.
+    existing_card = StudentCard.objects.filter(user=request.user).first()
+    if existing_card and existing_card.status == 'revoked':
+        messages.error(
+            request,
+            'Your card has been revoked by an administrator and cannot be reactivated by uploading a document. '
+            'Please contact the student card office.'
+        )
+        return redirect('dashboard')
+
     if request.method != 'POST':
         return render(request, 'accounts/reupload_proof.html')
 
@@ -639,6 +687,18 @@ def reupload_proof(request):
         messages.warning(request, 'This document could not be verified with enough confidence. Please upload a clearer copy of your current proof of registration.')
         return redirect('reupload_proof')
 
+    # The account already has a verified student number, so unlike signup
+    # there's nothing to review - a document for a different student is simply
+    # the wrong document. Without this, a student whose registration lapsed
+    # could extend their own card using a classmate's current proof.
+    extracted_number = _normalise_student_number(ocr_result.get('student_number'))
+    if not extracted_number:
+        messages.warning(request, 'We could not read a student number from this document. Please upload a clearer copy.')
+        return redirect('reupload_proof')
+    if extracted_number != _normalise_student_number(request.user.student_number):
+        messages.warning(request, 'This proof of registration belongs to a different student number. Please upload your own.')
+        return redirect('reupload_proof')
+
     registration_end_date = parse_registration_end_date(ocr_result.get('period'))
     if registration_period_has_expired(registration_end_date):
         messages.warning(
@@ -660,13 +720,18 @@ def reupload_proof(request):
     user.is_verified = True
     user.save()
 
-    student_card = StudentCard.objects.filter(user=user).first()
+    student_card = existing_card
     if student_card:
         student_card.expiry_date = registration_end_date
         student_card.status = 'active'
         student_card.save()
         CardActivity.objects.create(student_card=student_card, activity_type='reactivated')
         messages.success(request, 'Your digital student card has been reactivated!')
+    elif settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD and not user.email_confirmed:
+        # Same rule as signup: a first card is only issued once the student
+        # has proved control of their student mailbox - confirm_email() will
+        # issue it then, now that the account is verified.
+        messages.info(request, 'Your registration was verified. Confirm your email address to receive your digital student card.')
     else:
         try:
             generate_student_card(user, request)
