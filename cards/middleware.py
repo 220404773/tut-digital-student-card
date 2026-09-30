@@ -1,3 +1,5 @@
+from tut_student_card.client_ip import get_client_ip
+
 from .models import PageVisit
 
 
@@ -30,7 +32,7 @@ class PageVisitMiddleware:
             PageVisit.objects.create(
                 user=user,
                 path=request.path,
-                ip_address=request.META.get('REMOTE_ADDR'),
+                ip_address=get_client_ip(request),
             )
 
         return response

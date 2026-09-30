@@ -19,6 +19,18 @@ ALLOWED_HOSTS = config(
 # http:// links even when the site is served over https://.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# The same load balancer hides the client's IP address - see client_ip.py.
+# Set one of these to match the host, never both blindly: a header the proxy
+# doesn't actually set can be forged by any client.
+CLIENT_IP_HEADER = config('CLIENT_IP_HEADER', default='')
+TRUSTED_PROXY_COUNT = config('TRUSTED_PROXY_COUNT', default=0, cast=int)
+RATELIMIT_IP_META_KEY = 'tut_student_card.client_ip.get_client_ip'
+
+# How long page-visit rows and activity-log IP addresses are kept. IP
+# addresses are personal information under POPIA, so they can't be held
+# indefinitely; `manage.py purge_old_activity`, run daily, enforces this.
+ACTIVITY_RETENTION_DAYS = config('ACTIVITY_RETENTION_DAYS', default=90, cast=int)
+
 # Stops a browser from re-guessing a served file's type from its content and
 # rendering it as something more dangerous than its declared Content-Type -
 # the standard defence against a crafted "image" that's actually

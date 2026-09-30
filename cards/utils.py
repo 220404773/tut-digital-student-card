@@ -757,8 +757,9 @@ def link_recent_anonymous_visits(user, request, within_minutes=60):
     IP address within a recent time window. Returns how many rows were linked.
     """
     from .models import PageVisit
+    from tut_student_card.client_ip import get_client_ip
 
-    ip_address = request.META.get('REMOTE_ADDR')
+    ip_address = get_client_ip(request)
     if not ip_address:
         return 0
 

@@ -16,6 +16,7 @@ from accounts.views import split_full_name, send_confirmation_email
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import get_card_display_data, build_card_verification_url, generate_student_card
 from .google_wallet import build_google_wallet_save_url
+from tut_student_card.client_ip import get_client_ip
 import qrcode
 
 
@@ -159,16 +160,6 @@ def verify_card_public(request, card_number):
         'user': student_card.user,
     }
     return render(request, 'cards/verify_public.html', context)
-
-
-def get_client_ip(request):
-    """Get client IP address from request."""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
 
 
 @staff_member_required(login_url='login')
