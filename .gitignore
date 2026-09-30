@@ -61,3 +61,7 @@ htmlcov/
 # Reference material moved out of the app - set_admin_password.py in here
 # has a real credential hardcoded, so this folder stays out of version control.
 /archive/
+
+# ET-01 evaluation documents are real students' personal information -
+# never commit them (see cards/management/commands/evaluate_ocr.py).
+/evaluation*/
