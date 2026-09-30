@@ -1,0 +1,40 @@
+# Runs the app and a self-hosted model side by side on one machine, so
+# document text is only ever sent between these two containers. Host the
+# machine in South Africa (e.g. Oracle Cloud Always Free, Johannesburg region)
+# and the AI step involves no cross-border transfer.
+#
+#   docker compose up -d
+#   docker compose exec ollama ollama pull qwen2.5:3b     # once - the model persists in the volume
+#   docker compose exec web python manage.py migrate
+#   docker compose exec web python manage.py check_llm
+services:
+  ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    # No "ports:" on purpose - only the web container can reach the model,
+    # never the internet.
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      LLM_PROVIDER: local
+      LLM_BASE_URL: http://ollama:11434
+      # Keep the SQLite database and uploads in volumes - inside the image
+      # they would be wiped every time the container is rebuilt.
+      DB_NAME: /app/data/db.sqlite3
+    volumes:
+      - app-data:/app/data
+      - media:/app/media
+    ports:
+      - "8080:8080"
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  ollama-data:
+  app-data:
+  media:
