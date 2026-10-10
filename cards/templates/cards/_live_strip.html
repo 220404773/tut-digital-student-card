@@ -9,5 +9,13 @@
     <strong>LIVE</strong>
     <time data-live-clock>--:--:--</time>
     <span data-live-date></span>
-    <button type="button" class="btn btn-sm btn-light py-0 ms-auto d-none" data-enable-tilt>Tap to turn on tilt shimmer</button>
+    {% comment %}
+        Shown by live-card.js only on phones and tablets that need a tap before a
+        website may use the motion sensor (iPhones). Optional: without it the shine
+        moves by itself.
+    {% endcomment %}
+    <button type="button" class="btn btn-sm btn-light py-0 ms-auto d-none" data-enable-tilt
+            title="Lets the shine on your card follow your phone's tilt, so staff can see it is the live card and not a screenshot.">
+        Tilt to check: tap to turn on
+    </button>
 </div>

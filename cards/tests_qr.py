@@ -126,3 +126,5 @@ class LiveQrCodeTests(TestCase):
         self.assertContains(response, 'data-refresh-seconds="30"')
         self.assertContains(response, 'data-live-clock')
         self.assertContains(response, 'js/live-card')
+        # Explains the tilt check as an anti-screenshot feature, not a setting.
+        self.assertContains(response, 'Tilt to check: tap to turn on')

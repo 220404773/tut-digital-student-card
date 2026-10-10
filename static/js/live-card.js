@@ -78,10 +78,14 @@
         };
         var listen = function () { window.addEventListener('deviceorientation', onTilt); };
 
+        // Phones and tablets only: their main pointer is a finger. Computers -
+        // touchscreen laptops included - have no motion sensor worth asking for.
+        var isHandheld = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+
         if (typeof DeviceOrientationEvent.requestPermission === 'function') {
             // iPhones only allow motion sensors after a tap; until then the
             // shimmer moves on its own.
-            if (tiltButton) {
+            if (tiltButton && isHandheld) {
                 tiltButton.classList.remove('d-none');
                 tiltButton.addEventListener('click', function () {
                     DeviceOrientationEvent.requestPermission().then(function (state) {
