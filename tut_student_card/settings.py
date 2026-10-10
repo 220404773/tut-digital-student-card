@@ -1,11 +1,33 @@
 import os
 from pathlib import Path
 from decouple import config
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = config('SECRET_KEY', default='dev-key-change-in-production')
-DEBUG = config('DEBUG', default=True, cast=bool)
+# Debug mode is off unless explicitly switched on (DEBUG=True in a local .env).
+# A deploy that forgets the variable then runs safely - no error pages that
+# show code and settings to visitors - instead of the other way round.
+DEBUG = config('DEBUG', default=False, cast=bool)
+
+# Signs sessions, password-reset and email-confirmation links, and CSRF
+# tokens: anyone who knows it can forge them. Local development may use the
+# placeholder; anything else must set a long random key of its own, or the
+# app refuses to start rather than run with a key that is public in this repo.
+# Generate one with:
+#   python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+SECRET_KEY = config('SECRET_KEY', default='')
+_PLACEHOLDER_SECRET_KEYS = {'', 'dev-key-change-in-production', 'dev-secret-key-change-in-production'}
+if SECRET_KEY in _PLACEHOLDER_SECRET_KEYS or len(SECRET_KEY) < 32:
+    if not DEBUG:
+        _message = 'SECRET_KEY must be set to a random value of at least 32 characters when DEBUG is off.'
+        # manage.py catches ImproperlyConfigured from settings and fails later
+        # with an unrelated "Models aren't loaded yet", so say it plainly first
+        # - the container's start command runs manage.py migrate.
+        import sys
+        sys.stderr.write(f'\nSTARTUP REFUSED: {_message}\n\n')
+        raise ImproperlyConfigured(_message)
+    SECRET_KEY = SECRET_KEY or 'dev-key-change-in-production'
 ALLOWED_HOSTS = config(
     'ALLOWED_HOSTS',
     default='localhost,127.0.0.1',

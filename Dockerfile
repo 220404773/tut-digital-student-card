@@ -24,7 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN python manage.py collectstatic --noinput
+# Settings refuse to load without a real SECRET_KEY when DEBUG is off, and
+# no runtime variables exist at build time. collectstatic only copies files
+# and never signs anything, so it gets a throwaway key that exists only for
+# this step - the running app uses the SECRET_KEY set on App Platform.
+RUN SECRET_KEY=build-step-only-collectstatic-never-signs-anything python manage.py collectstatic --noinput
 
 EXPOSE 8080
 # Default gunicorn worker timeout (30s) was killing requests mid-OCR - image

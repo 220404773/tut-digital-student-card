@@ -1,0 +1,130 @@
+# DigitalOcean App Platform spec for the TUT Digital Student Card System.
+#
+# Use it when creating the app: Create App -> choose the GitHub repo -> on the
+# review screen open "Edit App Spec" and paste this file (or, with doctl:
+# `doctl apps create --spec .do/app.yaml`).
+#
+# Contains NO secrets. Every value marked CHANGE_ME must be replaced in the
+# control panel (App -> Settings -> Environment Variables) after creation;
+# variables of type SECRET are stored encrypted there. The app refuses to
+# start until SECRET_KEY is a real random key.
+
+name: tut-student-card
+region: ams
+
+services:
+  - name: web
+    github:
+      repo: 220404773/tut-digital-student-card
+      branch: master
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    http_port: 8080
+    # One instance: rate limits, migrations-on-start and the review queue
+    # assume a single instance. 1 GB RAM for OCR + OpenCV. Check the current
+    # size slugs and prices before creating the app.
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-1gb
+    routes:
+      - path: /
+
+    envs:
+      # 1. Never debug mode in production (the code also defaults to off).
+      - key: DEBUG
+        scope: RUN_TIME
+        value: "False"
+
+      # 2. A fresh random key, used only in production. Generate locally with:
+      #    python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
+      - key: SECRET_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+
+      # 3. The real visitor address is in the do-connecting-ip header; without
+      #    this every student looks like DigitalOcean's proxy.
+      - key: CLIENT_IP_HEADER
+        scope: RUN_TIME
+        value: DO-Connecting-IP
+
+      # 4. QR codes point here. ${APP_URL} and ${APP_DOMAIN} are filled in by
+      #    App Platform with the app's primary address, so they follow a custom
+      #    domain automatically if one is added later.
+      - key: SITE_URL
+        scope: RUN_TIME
+        value: ${APP_URL}
+      - key: ALLOWED_HOSTS
+        scope: RUN_TIME
+        value: ${APP_DOMAIN}
+
+      # AI document extraction (Azure OpenAI, South Africa North).
+      - key: AZURE_OPENAI_ENDPOINT
+        scope: RUN_TIME
+        value: CHANGE_ME
+      - key: AZURE_OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: AZURE_OPENAI_DEPLOYMENT
+        scope: RUN_TIME
+        value: gpt-5-nano
+      # NVIDIA_API_KEY is deliberately absent: no fallback outside South
+      # Africa, so a document is never sent to a provider without a data
+      # processing agreement.
+
+      # Email (Azure Communication Services). Without these, confirmation
+      # emails are only written to the log and no student can get a card.
+      - key: EMAIL_BACKEND
+        scope: RUN_TIME
+        value: tut_student_card.azure_email_backend.AzureCommunicationEmailBackend
+      - key: AZURE_EMAIL_CONNECTION_STRING
+        scope: RUN_TIME
+        type: SECRET
+        value: CHANGE_ME
+      - key: AZURE_EMAIL_SENDER_ADDRESS
+        scope: RUN_TIME
+        value: CHANGE_ME
+      - key: DEFAULT_FROM_EMAIL
+        scope: RUN_TIME
+        value: CHANGE_ME
+
+      # 5. PostgreSQL and Spaces are not created yet. Until they are, the app
+      #    uses SQLite inside the container and local media storage - fine for
+      #    a test, but every redeploy or restart wipes accounts and photos.
+      #    Once created, uncomment and fill these in:
+      # - key: DB_ENGINE
+      #   scope: RUN_TIME
+      #   value: django.db.backends.postgresql
+      # - key: DB_NAME
+      #   scope: RUN_TIME
+      #   value: CHANGE_ME
+      # - key: DB_USER
+      #   scope: RUN_TIME
+      #   value: CHANGE_ME
+      # - key: DB_PASSWORD
+      #   scope: RUN_TIME
+      #   type: SECRET
+      #   value: CHANGE_ME
+      # - key: DB_HOST
+      #   scope: RUN_TIME
+      #   value: CHANGE_ME
+      # - key: DB_PORT
+      #   scope: RUN_TIME
+      #   value: "25060"
+      # - key: AWS_STORAGE_BUCKET_NAME
+      #   scope: RUN_TIME
+      #   value: CHANGE_ME
+      # - key: AWS_ACCESS_KEY_ID
+      #   scope: RUN_TIME
+      #   type: SECRET
+      #   value: CHANGE_ME
+      # - key: AWS_SECRET_ACCESS_KEY
+      #   scope: RUN_TIME
+      #   type: SECRET
+      #   value: CHANGE_ME
+      # - key: AWS_S3_ENDPOINT_URL
+      #   scope: RUN_TIME
+      #   value: https://ams3.digitaloceanspaces.com
+      # - key: AWS_S3_REGION_NAME
+      #   scope: RUN_TIME
+      #   value: ams3
