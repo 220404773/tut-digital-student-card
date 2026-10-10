@@ -33,9 +33,44 @@
                             {% endif %}
                             <div class="flex-grow-1">
                                 <label for="id_profile_picture" class="form-label mb-1">Profile Picture</label>
-                                <input type="file" class="form-control form-control-sm" id="id_profile_picture" name="profile_picture" accept=".jpg,.jpeg,.png">
+                                <input type="file" class="form-control form-control-sm" id="id_profile_picture" name="profile_picture"
+                                       accept=".jpg,.jpeg,.png" aria-describedby="photo-guidance">
+                                {% if form.profile_picture.errors %}
+                                    <div class="invalid-feedback d-block">{{ form.profile_picture.errors.0 }}</div>
+                                {% endif %}
                             </div>
                         </div>
+
+                        {% comment %}
+                            What a card photo must look like, shown before the student picks one.
+                            The upload is also checked automatically for one clear face
+                            (accounts/face_checks.py).
+                        {% endcomment %}
+                        <div id="photo-guidance" class="border rounded p-2 mb-2 small bg-light">
+                            <strong>Your photo goes on your student card</strong>, and campus staff compare it with your face. Please use:
+                            <ul class="mb-1 ps-3">
+                                <li>a recent photo of <strong>just you</strong>, facing the camera, from the shoulders up;</li>
+                                <li>a plain, light background and good, even light - no strong shadows;</li>
+                                <li>your face fully visible: no sunglasses, cap, mask or filters;</li>
+                                <li>a sharp photo (hold still), as a JPG or PNG under 5 MB.</li>
+                            </ul>
+                            {% if photo_locked %}
+                                Your card is already issued, so a new photo is checked by a staff member before it replaces
+                                the one on your card.
+                            {% endif %}
+                        </div>
+
+                        {% if photo_locked and face_comparison_enabled %}
+                            <div class="form-check mb-2 small">
+                                <input class="form-check-input" type="checkbox" name="face_compare_consent" id="face-compare-consent">
+                                <label class="form-check-label" for="face-compare-consent">
+                                    Compare my new photo with my current card photo automatically, to help staff confirm it is
+                                    me. This creates biometric data from both photos, used only for this check and not stored
+                                    (see the <a href="{% url 'privacy' %}" target="_blank" rel="noopener">Privacy Policy</a>).
+                                    Optional - without it, a staff member compares the photos by eye.
+                                </label>
+                            </div>
+                        {% endif %}
 
                         <div class="form-group mb-2">
                             <label for="id_email" class="form-label mb-1">Email</label>

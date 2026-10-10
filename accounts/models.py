@@ -25,6 +25,10 @@ class User(AbstractUser):
     # member approves it - the card's photo is what a guard checks the
     # holder's face against (settings.REQUIRE_PHOTO_FOR_CARD).
     pending_profile_picture = models.ImageField(upload_to='profile_pictures/pending/', null=True, blank=True)
+    # Whether the student agreed to the waiting photo being compared with
+    # their current one by face comparison (biometric data - POPIA s26/s27).
+    # Without it, staff compare the two photos by eye.
+    pending_photo_compare_consent = models.BooleanField(default=False)
     # Likewise a name change after the card was issued: the name is printed on
     # the card, so it only changes once a staff member approves it.
     pending_first_name = models.CharField(max_length=150, blank=True, default='')

@@ -364,4 +364,23 @@ REQUIRE_EMAIL_CONFIRMATION_FOR_CARD = config(
 # .pending_profile_picture) - otherwise anyone could put a friend's face on
 # their card. Set False only for an offline demo.
 REQUIRE_PHOTO_FOR_CARD = config('REQUIRE_PHOTO_FOR_CARD', default=True, cast=bool)
+
+# Face models run locally through OpenCV - see accounts/face_models/README.md.
+FACE_MODELS_DIR = BASE_DIR / 'accounts' / 'face_models'
+# Every uploaded photo must show exactly one clear face (face *detection*:
+# locates a face, identifies nobody).
+PHOTO_FACE_CHECK_ENABLED = config('PHOTO_FACE_CHECK_ENABLED', default=True, cast=bool)
+# Comparing a requested new photo with the current card photo is face
+# *recognition* - biometric data, special personal information under POPIA
+# s26 - so it stays off until the privacy policy covers it. When on, it runs
+# only for students who consent, only advises the reviewing staff member, and
+# stores nothing biometric.
+FACE_COMPARISON_ENABLED = config('FACE_COMPARISON_ENABLED', default=False, cast=bool)
+
+# The card's QR code carries a signed code that changes every
+# LIVE_QR_REFRESH_SECONDS; the verification page shows it as LIVE only while
+# it is younger than LIVE_QR_MAX_AGE_SECONDS. A screenshot of someone else's
+# card therefore reads as a static code within a minute.
+LIVE_QR_REFRESH_SECONDS = 30
+LIVE_QR_MAX_AGE_SECONDS = 60
 TESSERACT_CMD = config('TESSERACT_CMD', default='')

@@ -33,7 +33,10 @@ def profile_form(**extra):
     return data
 
 
-@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+# The test images are plain colour squares, so face detection is off here -
+# see tests_face_checks.py.
+@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True,
+                   PHOTO_FACE_CHECK_ENABLED=False)
 class PhotoLockTests(TestCase):
     @classmethod
     def tearDownClass(cls):
@@ -153,7 +156,10 @@ class PhotoLockTests(TestCase):
         self.assertEqual(issue_card_if_allowed(self.student), 'issued')
 
 
-@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+# The test images are plain colour squares, so face detection is off here -
+# see tests_face_checks.py.
+@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True,
+                   PHOTO_FACE_CHECK_ENABLED=False)
 class NameLockTests(TestCase):
     def setUp(self):
         cache.clear()

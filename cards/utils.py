@@ -1003,13 +1003,49 @@ def generate_unique_card_number(user):
     return f"TUT{user.id}{uuid.uuid4().hex[:8].upper()}"
 
 
-def render_card_qr_png(card_number, request=None):
+_LIVE_QR_SALT = 'cards.live-qr'
+
+
+def live_verification_url(card_number, request=None):
+    """The verification address with a signed, timestamped code: the card's
+    live QR code. Signed with SECRET_KEY, so it can't be forged or backdated,
+    and it goes stale after LIVE_QR_MAX_AGE_SECONDS - a screenshot stops
+    reading as live within a minute."""
+    from urllib.parse import urlencode
+    from django.core.signing import TimestampSigner
+
+    code = TimestampSigner(salt=_LIVE_QR_SALT).sign(card_number)
+    return f"{build_card_verification_url(card_number, request)}?{urlencode({'live': code})}"
+
+
+def live_code_status(card_number, code):
+    """'live' (a fresh code for this card), 'expired' (genuine but old - a
+    screenshot), 'static' (no code: a downloaded or Wallet QR), or 'invalid'
+    (tampered, or for a different card)."""
+    from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
+
+    if not code:
+        return 'static'
+    try:
+        value = TimestampSigner(salt=_LIVE_QR_SALT).unsign(code, max_age=settings.LIVE_QR_MAX_AGE_SECONDS)
+    except SignatureExpired:
+        return 'expired'
+    except BadSignature:
+        return 'invalid'
+    return 'live' if value == card_number else 'invalid'
+
+
+def render_card_qr_png(card_number, request=None, live=False):
     """Return the verification QR code for a card as PNG bytes.
 
     Generated each time it's shown rather than saved as a file: a stored
     image fixes the web address at the moment the card was issued, so a new
     domain or a restarted tunnel silently broke every existing QR code, and
     a reissued card left an old image behind in storage.
+
+    live=True encodes a signed code that expires (the card on screen,
+    refreshed every LIVE_QR_REFRESH_SECONDS); live=False is the plain address
+    used for the downloaded image, which verifies as a "static" code.
     """
     qr = qrcode.QRCode(
         version=1,
@@ -1017,7 +1053,7 @@ def render_card_qr_png(card_number, request=None):
         box_size=10,
         border=4,
     )
-    qr.add_data(build_card_verification_url(card_number, request))
+    qr.add_data(live_verification_url(card_number, request) if live else build_card_verification_url(card_number, request))
     qr.make(fit=True)
     buffer = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buffer, format='PNG')

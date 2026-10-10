@@ -68,3 +68,6 @@ htmlcov/
 
 # Agent team review reports - kept locally, never committed.
 /docs/cosmos/
+
+# Face comparison model (39 MB) - downloaded by manage.py download_face_models, not committed.
+/accounts/face_models/face_recognition_sface_2021dec.onnx

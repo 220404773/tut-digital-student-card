@@ -2,6 +2,7 @@ from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm, PasswordChangeForm
 from django.core.files.uploadedfile import UploadedFile
+from .face_checks import photo_problems
 from .models import User
 
 
@@ -187,6 +188,14 @@ class CustomUserChangeForm(AccessibleFormMixin, UserChangeForm):
         picture.seek(0)
         if not any(header.startswith(sig) for sig in self.PICTURE_SIGNATURES[ext]):
             raise forms.ValidationError('This file does not look like a valid JPG or PNG. Please upload the original file.')
+
+        # It will be the card photo a guard compares with the holder's face,
+        # so it has to show one clear face (face detection only - nobody is
+        # identified; see accounts/face_checks.py).
+        if settings.PHOTO_FACE_CHECK_ENABLED:
+            problems = photo_problems(picture)
+            if problems:
+                raise forms.ValidationError(problems[0])
 
         return picture
 

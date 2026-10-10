@@ -29,6 +29,11 @@ COPY . .
 # and never signs anything, so it gets a throwaway key that exists only for
 # this step - the running app uses the SECRET_KEY set on App Platform.
 RUN SECRET_KEY=build-step-only-collectstatic-never-signs-anything python manage.py collectstatic --noinput
+# The 39 MB face-comparison model isn't in Git. It's only needed when
+# FACE_COMPARISON_ENABLED is on, so a failed download (e.g. Hugging Face
+# being down) doesn't fail the build - comparison then reports itself off.
+RUN SECRET_KEY=build-step-only-collectstatic-never-signs-anything python manage.py download_face_models \
+    || echo "Face comparison model not downloaded - face comparison will be unavailable"
 
 EXPOSE 8080
 # Default gunicorn worker timeout (30s) was killing requests mid-OCR - image

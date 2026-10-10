@@ -889,6 +889,11 @@ def profile(request):
                     updated.pending_profile_picture.delete(save=False)
                 updated.pending_profile_picture = form.cleaned_data['profile_picture']
                 updated.profile_picture = current_photo
+                # Face comparison only with the student's explicit consent
+                # (biometric data, POPIA s27); otherwise staff compare by eye.
+                updated.pending_photo_compare_consent = (
+                    settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
+                )
                 waiting.append('photo')
             if new_name != current_name and has_card:
                 updated.pending_first_name, updated.pending_last_name = new_name
@@ -924,6 +929,10 @@ def profile(request):
         'password_form': password_form,
         'student_card': student_card,
         'is_verified': user.is_verified,
+        # Once the card exists, a new photo waits for staff - and can, with
+        # consent, be compared automatically with the current one.
+        'photo_locked': student_card is not None and settings.REQUIRE_PHOTO_FOR_CARD,
+        'face_comparison_enabled': settings.FACE_COMPARISON_ENABLED,
     }
     return render(request, 'accounts/profile.html', context)
 

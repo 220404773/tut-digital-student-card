@@ -1,0 +1,13 @@
+{% comment %}
+    Live strip on the card: a ticking clock and date (static/js/live-card.js).
+    A screenshot or a replayed recording shows a frozen or wrong time, so a
+    guard can tell at a glance it isn't the live card. Not a live region on
+    purpose - a screen reader announcing every second would be unusable.
+{% endcomment %}
+<div class="live-card-strip">
+    <span class="live-dot" aria-hidden="true"></span>
+    <strong>LIVE</strong>
+    <time data-live-clock>--:--:--</time>
+    <span data-live-date></span>
+    <button type="button" class="btn btn-sm btn-light py-0 ms-auto d-none" data-enable-tilt>Tap to turn on tilt shimmer</button>
+</div>

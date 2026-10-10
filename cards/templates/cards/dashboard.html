@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 
 {% block title %}Dashboard - TUT Digital Student Card{% endblock %}
 
@@ -118,7 +119,8 @@
 
                 <div class="row mb-3">
                     <div class="{% if card_data.qr_code_url %}col-md-8{% else %}col-12{% endif %}">
-                        <div class="student-card h-100">
+                        <div class="student-card live-card h-100" data-live-card>
+                            <div class="live-card-shimmer" aria-hidden="true"></div>
                             <div class="student-card-content">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
@@ -167,6 +169,8 @@
                                         <p class="mb-0" style="font-size: 0.85rem;">{{ user.email }}</p>
                                     </div>
                                 </div>
+
+                                {% include 'cards/_live_strip.html' %}
                             </div>
                         </div>
                     </div>
@@ -177,25 +181,12 @@
                                     <h6 class="mb-0"><i class="fas fa-qrcode"></i> Verification QR Code</h6>
                                 </div>
                                 <div class="card-body text-center py-3 d-flex flex-column justify-content-center">
-                                    <img id="card-qr" src="{{ card_data.qr_code_url }}" alt="QR code for your student card" class="img-fluid mx-auto" style="max-width: 240px; width: 100%;">
+                                    <img id="card-qr" src="{{ card_data.qr_code_url }}" alt="QR code for your student card" class="img-fluid mx-auto" style="max-width: 240px; width: 100%;"
+                                         data-base-src="{{ card_data.qr_code_url }}" data-refresh-seconds="{{ live_qr_refresh_seconds }}">
                                     <p id="card-qr-failed" class="alert alert-warning small mb-0 d-none" role="status">
                                         Your QR code couldn't load. Refresh the page, or use <strong>Download QR Code</strong> below.
                                     </p>
-                                    <p class="text-muted mt-2 mb-0"><small>Show this for quick verification at campus gates</small></p>
-                                    <script nonce="{{ request.csp_nonce }}">
-                                        (function () {
-                                            // An inline onerror attribute would be blocked by the
-                                            // Content-Security-Policy, so the check lives here.
-                                            var img = document.getElementById('card-qr');
-                                            function showFallback() {
-                                                img.classList.add('d-none');
-                                                document.getElementById('card-qr-failed').classList.remove('d-none');
-                                            }
-                                            img.addEventListener('error', showFallback);
-                                            // It may already have failed before this script ran.
-                                            if (img.complete && img.naturalWidth === 0) { showFallback(); }
-                                        })();
-                                    </script>
+                                    <p class="text-muted mt-2 mb-0"><small>Show this at campus gates. The code changes every {{ live_qr_refresh_seconds }} seconds, so a screenshot stops working.</small></p>
                                 </div>
                             </div>
                         </div>
@@ -295,4 +286,5 @@
         </div>
     </div>
 </div>
+<script src="{% static 'js/live-card.js' %}" defer></script>
 {% endblock %}

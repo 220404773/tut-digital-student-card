@@ -43,3 +43,56 @@ body { font-family: 'Segoe UI', sans-serif; background-color: #f8f9fa; }
     .navbar, footer, .btn-group, .form-control { display: none; }
     .student-card { box-shadow: none; border: 2px solid var(--tut-blue); }
 }
+
+/* Live card (static/js/live-card.js): a moving shine and a ticking clock,
+   so a screenshot of someone else's card looks frozen. */
+.live-card { position: relative; overflow: hidden; }
+.live-card-shimmer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background: linear-gradient(115deg,
+        transparent 35%,
+        rgba(255, 255, 255, 0.22) 45%,
+        rgba(255, 205, 0, 0.22) 50%,
+        rgba(255, 255, 255, 0.22) 55%,
+        transparent 65%);
+    background-size: 300% 300%;
+    animation: live-card-shimmer 5s linear infinite;
+}
+/* Once the phone's tilt sensor is in use, the shine follows the tilt instead. */
+.live-card.tilt-active .live-card-shimmer {
+    animation: none;
+    background-position: var(--tilt-x, 50%) var(--tilt-y, 50%);
+    transition: background-position 0.1s linear;
+}
+@keyframes live-card-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: 0 100%; }
+}
+.live-card .student-card-content { position: relative; }
+.live-card-strip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.3);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+.live-card-strip [data-enable-tilt] { position: relative; z-index: 2; }
+.live-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: #3ddc84;
+    animation: live-dot-pulse 1s ease-in-out infinite;
+}
+@keyframes live-dot-pulse { 50% { opacity: 0.25; } }
+/* Students who ask their phone for less motion get a still card; the clock
+   still ticks, which is the part a screenshot can't fake. */
+@media (prefers-reduced-motion: reduce) {
+    .live-card-shimmer, .live-dot { animation: none; }
+}

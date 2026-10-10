@@ -6,7 +6,7 @@ served back to *other* users' browsers rather than deleted after processing.
 import io
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from PIL import Image
 
 from accounts.forms import CustomUserChangeForm
@@ -26,6 +26,8 @@ REAL_PNG = real_image_bytes('PNG')
 REAL_JPG = real_image_bytes('JPEG')
 
 
+# File-type safety, not faces: the test images are 1x1 pixels - see tests_face_checks.py.
+@override_settings(PHOTO_FACE_CHECK_ENABLED=False)
 class ProfilePictureUploadSafetyTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(

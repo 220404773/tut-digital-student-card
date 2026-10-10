@@ -17,11 +17,12 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import User, DeletedStudentLog, ReviewRequest
+from accounts.face_checks import compare_faces
 from accounts.services import confirmation_cooldown_remaining, send_confirmation_email, split_full_name
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import (
     get_card_display_data, build_card_verification_url,
-    issue_card_if_allowed, registration_period_has_expired, registration_period_is_implausible,
+    issue_card_if_allowed, live_code_status, registration_period_has_expired, registration_period_is_implausible,
     render_card_qr_png,
 )
 from .google_wallet import build_google_wallet_save_url
@@ -71,6 +72,7 @@ def dashboard(request):
         'latest_review': None if user.is_verified else ReviewRequest.objects.filter(user=user).first(),
         # The card waits for a photo (settings.REQUIRE_PHOTO_FOR_CARD).
         'photo_needed': settings.REQUIRE_PHOTO_FOR_CARD and not user.profile_picture,
+        'live_qr_refresh_seconds': settings.LIVE_QR_REFRESH_SECONDS,
     }
     return render(request, 'cards/dashboard.html', context)
 
@@ -106,13 +108,13 @@ def view_card(request):
 
 @student_required
 def card_qr_image(request):
-    """The signed-in student's own QR code, drawn on request (shown on the
-    dashboard). Only ever their own card - there is no card number in the URL."""
+    """The signed-in student's own live QR code, shown on the dashboard and
+    redrawn every LIVE_QR_REFRESH_SECONDS by static/js/live-card.js. Only
+    ever their own card - there is no card number in the URL."""
     student_card = get_object_or_404(StudentCard, user=request.user)
-    response = HttpResponse(render_card_qr_png(student_card.card_number, request), content_type='image/png')
-    # Never cached: it identifies the student's card, and after a reissue the
-    # old code must disappear at once rather than linger for minutes. It is
-    # a tiny image, cheap to draw on every view.
+    response = HttpResponse(render_card_qr_png(student_card.card_number, request, live=True), content_type='image/png')
+    # Never cached: each one carries a code that expires, and after a reissue
+    # the old card must disappear at once.
     response['Cache-Control'] = 'no-store'
     return response
 
@@ -161,6 +163,10 @@ def verify_card_public(request, card_number):
     context = {
         'card': student_card,
         'user': student_card.user,
+        # Whether the scanned code came from the live card on a phone, or is
+        # a screenshot, download or Wallet pass (see live_code_status).
+        'code_status': live_code_status(card_number, request.GET.get('live')),
+        'checked_at': timezone.localtime(),
     }
     return render(request, 'cards/verify_public.html', context)
 
@@ -501,10 +507,26 @@ def report_review_requests(request):
     return render(request, 'cards/report_review_requests.html', {
         'pending': pending,
         'resolved': resolved,
-        'photo_changes': students_with_photo_changes(),
+        'photo_changes': [(student, _photo_comparison(student)) for student in students_with_photo_changes()],
+        'face_comparison_enabled': settings.FACE_COMPARISON_ENABLED,
         'name_changes': students_with_name_changes(),
         'today': timezone.now().date(),
     })
+
+
+def _photo_comparison(student):
+    """Advice for the reviewing staff member on whether the waiting photo
+    shows the same person as the card photo - only if the student consented
+    and comparison is switched on. Worked out each time the page is shown and
+    never stored (see accounts/face_checks.py)."""
+    if not (settings.FACE_COMPARISON_ENABLED and student.pending_photo_compare_consent and student.profile_picture):
+        return None
+    try:
+        with student.profile_picture.open('rb') as current, student.pending_profile_picture.open('rb') as new:
+            return compare_faces(current, new)
+    except OSError:
+        logger.warning("Could not open photos of student %s for comparison", student.pk)
+        return None
 
 
 def students_with_photo_changes():
@@ -561,12 +583,14 @@ def resolve_photo_change(request, user_id):
             student.profile_picture.delete(save=False)
         student.profile_picture = student.pending_profile_picture.name
         student.pending_profile_picture = None
-        student.save(update_fields=['profile_picture', 'pending_profile_picture'])
+        student.pending_photo_compare_consent = False
+        student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent'])
         messages.success(request, f"Approved {student.get_full_name_display()}'s new photo - it now shows on their card.")
     elif action == 'reject':
         student.pending_profile_picture.delete(save=False)
         student.pending_profile_picture = None
-        student.save(update_fields=['pending_profile_picture'])
+        student.pending_photo_compare_consent = False
+        student.save(update_fields=['pending_profile_picture', 'pending_photo_compare_consent'])
         messages.success(request, f"Rejected {student.get_full_name_display()}'s new photo - their card keeps the current one.")
     else:
         messages.error(request, 'Choose Approve or Reject.')

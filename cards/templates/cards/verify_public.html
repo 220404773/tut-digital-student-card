@@ -13,6 +13,35 @@
 <div class="container py-3">
     <div class="row">
         <div class="col-lg-6 mx-auto">
+            {% comment %}
+                Whether the QR code came from the live card on the student's phone. A
+                live code expires within a minute, so a screenshot of someone else's
+                card shows up here as an old code.
+            {% endcomment %}
+            {% if code_status == 'live' %}
+                <div class="alert alert-success mb-3" role="status">
+                    <strong><i class="fas fa-check-circle" aria-hidden="true"></i> LIVE CODE</strong> -
+                    scanned from the card on the student's phone just now. Checked at {{ checked_at|time:"H:i:s" }}.
+                </div>
+            {% elif code_status == 'expired' %}
+                <div class="alert alert-danger mb-3" role="alert">
+                    <strong><i class="fas fa-exclamation-triangle" aria-hidden="true"></i> OLD CODE</strong> -
+                    this QR code is more than a minute old, so it is probably a screenshot.
+                    Ask the student to show the live card on their phone.
+                </div>
+            {% elif code_status == 'invalid' %}
+                <div class="alert alert-danger mb-3" role="alert">
+                    <strong><i class="fas fa-times-circle" aria-hidden="true"></i> NOT A GENUINE CODE</strong> -
+                    this QR code has been altered or belongs to a different card. Do not accept it.
+                </div>
+            {% else %}
+                <div class="alert alert-warning mb-3" role="status">
+                    <strong><i class="fas fa-info-circle" aria-hidden="true"></i> SAVED CODE</strong> -
+                    this is a downloaded or Google Wallet code, not the live card. It confirms the card's status,
+                    but if in doubt, ask to see the live card on the student's phone.
+                </div>
+            {% endif %}
+
             {% if card.is_valid %}
                 <div class="student-card mb-3">
                     <div class="student-card-content">

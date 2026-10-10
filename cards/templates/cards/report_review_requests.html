@@ -81,11 +81,12 @@
                     <th>Student Number</th>
                     <th>Current photo</th>
                     <th>New photo</th>
+                    <th>Automatic comparison</th>
                     <th>Decision</th>
                 </tr>
             </thead>
             <tbody>
-                {% for student in photo_changes %}
+                {% for student, comparison in photo_changes %}
                     <tr>
                         <td><a href="{% url 'staff_student_detail' student.id %}">{{ student.get_full_name_display }}</a></td>
                         <td>{{ student.student_number }}</td>
@@ -102,6 +103,24 @@
                                  style="width: 72px; height: 72px; object-fit: cover;" class="rounded">
                         </td>
                         <td>
+                            {% if comparison %}
+                                {% if comparison.level == 'same' %}
+                                    <span class="badge bg-success">{{ comparison.verdict }}</span>
+                                {% elif comparison.level == 'different' %}
+                                    <span class="badge bg-danger">{{ comparison.verdict }}</span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">{{ comparison.verdict }}</span>
+                                {% endif %}
+                                <small class="d-block text-muted">similarity {{ comparison.score }} - advice only, you decide</small>
+                            {% elif face_comparison_enabled and student.pending_photo_compare_consent %}
+                                <small class="text-muted">Couldn't compare (no clear face found) - compare by eye</small>
+                            {% elif face_comparison_enabled %}
+                                <small class="text-muted">Student didn't consent - compare by eye</small>
+                            {% else %}
+                                <small class="text-muted">Off - compare by eye</small>
+                            {% endif %}
+                        </td>
+                        <td>
                             <form method="post" action="{% url 'resolve_photo_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
@@ -113,7 +132,7 @@
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="5" class="text-center text-muted">No photo changes waiting</td>
+                        <td colspan="6" class="text-center text-muted">No photo changes waiting</td>
                     </tr>
                 {% endfor %}
             </tbody>
