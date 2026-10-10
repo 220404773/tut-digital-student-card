@@ -52,7 +52,7 @@ class StudentUserAdmin(UserAdmin):
         return True
 
     def _reissue_single_card(self, student, request):
-        """Returns 'reissued', 'issued', 'awaiting_email', 'not_verified' or 'failed'."""
+        """Returns 'reissued', 'issued', 'awaiting_email', 'awaiting_photo', 'not_verified' or 'failed'."""
         card = StudentCard.objects.filter(user=student).first()
         if not card:
             # No card yet - issue one under the same rule as every other path
@@ -92,6 +92,8 @@ class StudentUserAdmin(UserAdmin):
         message = f"Reissued {outcomes['reissued']} card(s), newly issued {outcomes['issued']} card(s)."
         if outcomes['awaiting_email']:
             message += f" {outcomes['awaiting_email']} student(s) will get their card once they confirm their email."
+        if outcomes['awaiting_photo']:
+            message += f" {outcomes['awaiting_photo']} student(s) will get their card once they add a profile photo."
         if outcomes['not_verified']:
             message += f" {outcomes['not_verified']} student(s) aren't verified, so no card was issued."
         if outcomes['failed']:
@@ -135,6 +137,8 @@ class StudentUserAdmin(UserAdmin):
             self.message_user(request, f'{name} had no card yet - issued one.')
         elif outcome == 'awaiting_email':
             self.message_user(request, f'{name} will get their card once they confirm their email.', level=messages.WARNING)
+        elif outcome == 'awaiting_photo':
+            self.message_user(request, f'{name} will get their card once they add a profile photo.', level=messages.WARNING)
         elif outcome == 'not_verified':
             self.message_user(request, f"{name} isn't verified, so no card was issued.", level=messages.WARNING)
         else:
@@ -231,6 +235,8 @@ class StudentUserAdmin(UserAdmin):
                 self.message_user(request, 'Digital student card generated for this student.')
             elif outcome == 'awaiting_email':
                 self.message_user(request, 'Student verified - their card will be issued once they confirm their email.')
+            elif outcome == 'awaiting_photo':
+                self.message_user(request, 'Student verified - their card will be issued once they add a profile photo.')
 
 
 admin.site.register(User, StudentUserAdmin)
@@ -238,12 +244,24 @@ admin.site.register(User, StudentUserAdmin)
 
 @admin.register(ReviewRequest)
 class ReviewRequestAdmin(admin.ModelAdmin):
-    """Read-mostly view; decisions are made on the Review Requests report,
-    which also verifies the student and issues their card."""
+    """View-only. Decisions are made on the Review Requests report, which also
+    verifies the student, sets their registration end date and issues the
+    card - editing a request's status here would mark it decided while none
+    of that happened."""
     list_display = ('user', 'reason', 'status', 'created_at', 'resolved_by', 'resolved_at')
     list_filter = ('status', 'reason')
     search_fields = ('user__student_number', 'user__email')
-    readonly_fields = ('user', 'reason', 'message', 'created_at', 'resolved_at', 'resolved_by')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # The decided requests are the record that a person made the
+        # decision (POPIA s71).
+        return False
 admin.site.unregister(Group)
 
 # The "View site" link in the admin header (admin/base.html's {{ site_url }})

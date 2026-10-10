@@ -357,4 +357,11 @@ NVIDIA_MODEL = config('NVIDIA_MODEL', default='nvidia/nemotron-3-super-120b-a12b
 REQUIRE_EMAIL_CONFIRMATION_FOR_CARD = config(
     'REQUIRE_EMAIL_CONFIRMATION_FOR_CARD', default=True, cast=bool
 )
+
+# The card's photo is what a guard compares with the person showing it, so a
+# card is only issued once the student has a profile photo, and after that a
+# new photo waits for a staff member to approve it (accounts.User
+# .pending_profile_picture) - otherwise anyone could put a friend's face on
+# their card. Set False only for an offline demo.
+REQUIRE_PHOTO_FOR_CARD = config('REQUIRE_PHOTO_FOR_CARD', default=True, cast=bool)
 TESSERACT_CMD = config('TESSERACT_CMD', default='')

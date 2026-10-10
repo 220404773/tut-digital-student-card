@@ -21,6 +21,10 @@ class User(AbstractUser):
     registration_proof = models.FileField(upload_to='registration_proofs/', null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    # A new photo uploaded after the card was issued waits here until a staff
+    # member approves it - the card's photo is what a guard checks the
+    # holder's face against (settings.REQUIRE_PHOTO_FOR_CARD).
+    pending_profile_picture = models.ImageField(upload_to='profile_pictures/pending/', null=True, blank=True)
 
     # Confirms the student actually controls the email address on the
     # account - independent of is_verified, which only checks that an

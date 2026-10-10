@@ -122,6 +122,8 @@ class StudentRequestTests(TestCase):
         self.assertFalse(ReviewRequest.objects.exists())
 
 
+# Photos aren't what these tests are about - see tests_photo_lock.py.
+@override_settings(REQUIRE_PHOTO_FOR_CARD=False)
 @override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
 class StaffDecisionTests(TestCase):
     def setUp(self):
@@ -345,6 +347,8 @@ class SuspiciousDocumentTests(TestCase):
         self.assertEqual(ReviewRequest.objects.get().reason, 'suspicious_content')
 
 
+# Photos aren't what these tests are about - see tests_photo_lock.py.
+@override_settings(REQUIRE_PHOTO_FOR_CARD=False)
 @override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
 class OneCardRuleTests(TestCase):
     """Every path issues the first card through issue_card_if_allowed."""

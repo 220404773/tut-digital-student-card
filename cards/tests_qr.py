@@ -41,8 +41,10 @@ class CardQrCodeTests(TestCase):
             'https://tut-card.ondigitalocean.app' + reverse('verify_card_public', args=['TUT1ABCDEF12']),
         )
 
-    def test_qr_image_is_not_kept_by_shared_caches(self):
-        self.assertIn('private', self.client.get(reverse('card_qr_image'))['Cache-Control'])
+    def test_qr_image_is_never_cached(self):
+        """It identifies the card, and after a reissue the old code must not
+        linger in the browser."""
+        self.assertEqual(self.client.get(reverse('card_qr_image'))['Cache-Control'], 'no-store')
 
     def test_download_contains_the_same_code(self):
         response = self.client.get(reverse('download_qr'))

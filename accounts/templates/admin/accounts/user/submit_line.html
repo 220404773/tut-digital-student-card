@@ -20,7 +20,7 @@
     <form method="post" action="{% url 'admin:accounts_user_reissue_card' original.pk %}" style="display:inline;"
           data-confirm="Reissue a new card number and QR code for {{ original.get_full_name_display }}? Their old card number will stop working.">
         {% csrf_token %}
-        <input type="submit" class="button" value="Reissue Card" style="background:#198754; color:#fff;">
+        <input type="submit" class="button" value="Reissue Card" style="background:#146c43; color:#fff;">
     </form>
     <script src="{% static 'js/confirm-submit.js' %}"></script>
 {% endif %}

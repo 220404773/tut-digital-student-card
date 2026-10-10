@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 
+PHOTO_NEEDED_MESSAGE = (
+    'Your registration is verified. Add a profile photo on your Profile page to receive your digital '
+    'student card - the photo is what campus staff compare with your face.'
+)
+
 # The full OCR result carries fields (id_number, university_name,
 # qualification, academic_year, document_classification_reason, ...) that
 # signup() never reads back out of the cache - only these are actually
@@ -546,8 +551,11 @@ def confirm_email(request, uidb64, token):
             # Card issue is deferred to this point when confirmation is
             # required, so this is where a verified student finally gets one.
             try:
-                if issue_card_if_allowed(user, request) == 'issued':
+                outcome = issue_card_if_allowed(user, request)
+                if outcome == 'issued':
                     messages.success(request, 'Your digital student card has been generated!')
+                elif outcome == 'awaiting_photo':
+                    messages.info(request, PHOTO_NEEDED_MESSAGE)
             except Exception:
                 logger.exception("Card generation failed after email confirmation for user %s", user.pk)
                 messages.warning(
@@ -758,6 +766,8 @@ def _issue_first_card(request, user):
         messages.success(request, 'Your digital student card has been generated!')
     elif outcome == 'awaiting_email':
         messages.info(request, 'Your registration was verified. Confirm your email address to receive your digital student card.')
+    elif outcome == 'awaiting_photo':
+        messages.info(request, PHOTO_NEEDED_MESSAGE)
 
 
 @require_http_methods(['GET', 'POST'])
@@ -857,11 +867,32 @@ def profile(request):
             messages.success(request, 'Password changed successfully!')
             return redirect('profile')
     elif request.method == 'POST':
+        current_photo = user.profile_picture.name
         form = CustomUserChangeForm(request.POST, request.FILES, instance=user)
         password_form = StyledPasswordChangeForm(user)
         if form.is_valid():
+            new_photo = 'profile_picture' in request.FILES
+            has_card = StudentCard.objects.filter(user=user).exists()
+            if new_photo and has_card and settings.REQUIRE_PHOTO_FOR_CARD:
+                # The card is already issued with the current photo, so a new
+                # one waits for a staff member instead of replacing it - the
+                # card's photo is what a guard checks the holder against.
+                updated = form.save(commit=False)
+                if updated.pending_profile_picture:
+                    updated.pending_profile_picture.delete(save=False)
+                updated.pending_profile_picture = form.cleaned_data['profile_picture']
+                updated.profile_picture = current_photo
+                updated.save()
+                messages.success(
+                    request,
+                    'Profile updated. Your new photo will appear on your card once a staff member approves it.'
+                )
+                return redirect('dashboard')
             form.save()
             messages.success(request, 'Profile updated successfully!')
+            if new_photo and not has_card and user.is_verified:
+                # The photo may have been the last thing the card was waiting for.
+                _issue_first_card(request, user)
             return redirect('dashboard')
     else:
         form = CustomUserChangeForm(instance=user)

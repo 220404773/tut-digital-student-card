@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from accounts.models import User
@@ -143,6 +143,8 @@ class CardExpiryTests(TestCase):
         self.assertEqual(card.expiry_date, expected)
 
 
+# Photos aren't what these tests are about - see tests_photo_lock.py.
+@override_settings(REQUIRE_PHOTO_FOR_CARD=False)
 class AdminVerificationCardGenerationTests(TestCase):
     """Manually checking is_verified in the Django admin is a soft approval
     - it should generate the student's card the same way OCR

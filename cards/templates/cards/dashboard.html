@@ -13,13 +13,13 @@
 <div class="container py-3">
     {% if not user.is_verified %}
         {% if latest_review.status == 'pending' %}
-            <div class="alert alert-info py-2 mb-2">
+            <div class="alert alert-info py-2 mb-2" role="status">
                 <i class="fas fa-user-clock" aria-hidden="true"></i>
                 <strong>Under review:</strong> a staff member is checking your registration with the university
                 (requested {{ latest_review.created_at|date:"M d, Y" }}). Your card will be issued once it is confirmed.
             </div>
         {% else %}
-            <div class="alert alert-warning py-2 mb-2">
+            <div class="alert alert-warning py-2 mb-2" role="status">
                 <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
                 {% if latest_review.status == 'declined' %}
                     <strong>Review declined:</strong> a staff member could not confirm your registration{% if latest_review.staff_note %}: {{ latest_review.staff_note }}{% else %}.{% endif %}
@@ -31,12 +31,13 @@
                     <a href="{% url 'reupload_proof' %}" class="btn btn-sm btn-dark">
                         <i class="fas fa-upload" aria-hidden="true"></i> Upload again
                     </a>
-                    <form method="post" action="{% url 'request_review' %}" class="d-flex flex-wrap gap-2 mb-0">
+                    <form method="post" action="{% url 'request_review' %}" class="d-flex flex-wrap gap-2 align-items-end mb-0">
                         {% csrf_token %}
-                        <label for="review-message" class="visually-hidden">Anything the reviewer should know (optional)</label>
-                        <input type="text" id="review-message" name="message" maxlength="1000"
-                               class="form-control form-control-sm" style="min-width: 260px;"
-                               placeholder="Anything the reviewer should know (optional)">
+                        <div>
+                            <label for="review-message" class="form-label small mb-1">Anything the reviewer should know (optional)</label>
+                            <input type="text" id="review-message" name="message" maxlength="1000"
+                                   class="form-control form-control-sm" style="min-width: 260px;">
+                        </div>
                         <button type="submit" class="btn btn-sm btn-outline-dark">
                             <i class="fas fa-user-check" aria-hidden="true"></i> Ask a staff member to review
                         </button>
@@ -44,6 +45,13 @@
                 </div>
             </div>
         {% endif %}
+    {% endif %}
+
+    {% if user.pending_profile_picture %}
+        <div class="alert alert-info py-2 mb-2" role="status">
+            <i class="fas fa-camera" aria-hidden="true"></i>
+            <strong>New photo waiting for approval:</strong> a staff member will check it before it replaces the photo on your card.
+        </div>
     {% endif %}
 
     {% if student_card.status == 'expired' %}
@@ -161,8 +169,25 @@
                                     <h6 class="mb-0"><i class="fas fa-qrcode"></i> Verification QR Code</h6>
                                 </div>
                                 <div class="card-body text-center py-3 d-flex flex-column justify-content-center">
-                                    <img src="{{ card_data.qr_code_url }}" alt="QR code for verifying student card {{ student_card.card_number }}" class="img-fluid mx-auto" style="max-width: 240px; width: 100%;">
+                                    <img id="card-qr" src="{{ card_data.qr_code_url }}" alt="QR code for your student card" class="img-fluid mx-auto" style="max-width: 240px; width: 100%;">
+                                    <p id="card-qr-failed" class="alert alert-warning small mb-0 d-none" role="status">
+                                        Your QR code couldn't load. Refresh the page, or use <strong>Download QR Code</strong> below.
+                                    </p>
                                     <p class="text-muted mt-2 mb-0"><small>Show this for quick verification at campus gates</small></p>
+                                    <script nonce="{{ request.csp_nonce }}">
+                                        (function () {
+                                            // An inline onerror attribute would be blocked by the
+                                            // Content-Security-Policy, so the check lives here.
+                                            var img = document.getElementById('card-qr');
+                                            function showFallback() {
+                                                img.classList.add('d-none');
+                                                document.getElementById('card-qr-failed').classList.remove('d-none');
+                                            }
+                                            img.addEventListener('error', showFallback);
+                                            // It may already have failed before this script ran.
+                                            if (img.complete && img.naturalWidth === 0) { showFallback(); }
+                                        })();
+                                    </script>
                                 </div>
                             </div>
                         </div>
@@ -178,7 +203,18 @@
                 {% endif %}
 
             {% else %}
-                {% if user.is_verified and not user.email_confirmed %}
+                {% if user.is_verified and user.email_confirmed and photo_needed %}
+                    <div class="alert alert-info" role="status">
+                        <i class="fas fa-camera" aria-hidden="true"></i>
+                        <strong>Add your photo:</strong> your registration is verified and your email confirmed - add a
+                        profile photo and your card is issued straight away. Campus staff compare this photo with your face.
+                        <div class="mt-2">
+                            <a href="{% url 'profile' %}" class="btn btn-sm btn-dark">
+                                <i class="fas fa-camera" aria-hidden="true"></i> Add a photo
+                            </a>
+                        </div>
+                    </div>
+                {% elif user.is_verified and not user.email_confirmed %}
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle" aria-hidden="true"></i>
                         <strong>Card Pending:</strong> Your registration has been verified. Confirm your

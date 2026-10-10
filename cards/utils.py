@@ -1061,12 +1061,14 @@ def generate_student_card(user, request=None):
 
 def issue_card_if_allowed(user, request=None):
     """The one rule for issuing a student's first card: only once they are
-    verified, and - when confirmation is required - only once they have
-    confirmed their email. Signup, email confirmation, re-upload, a staff
-    review approval and the admin "verified" tick all go through here, so the
-    rule can't drift apart between them.
+    verified, have confirmed their email (when confirmation is required) and
+    have a profile photo (when a photo is required - the photo is what a
+    guard compares with the holder's face). Signup, email confirmation,
+    re-upload, adding a photo, a staff review approval and the admin
+    "verified" tick all go through here, so the rule can't drift apart
+    between them.
 
-    Returns 'exists', 'not_verified', 'awaiting_email' or 'issued'.
+    Returns 'exists', 'not_verified', 'awaiting_email', 'awaiting_photo' or 'issued'.
     """
     from django.contrib.auth import get_user_model
     from django.db import transaction
@@ -1083,6 +1085,8 @@ def issue_card_if_allowed(user, request=None):
             return 'not_verified'
         if settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD and not student.email_confirmed:
             return 'awaiting_email'
+        if settings.REQUIRE_PHOTO_FOR_CARD and not student.profile_picture:
+            return 'awaiting_photo'
         generate_student_card(student, request)
         return 'issued'
 

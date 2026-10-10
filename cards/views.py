@@ -1,6 +1,8 @@
 import functools
 import logging
 
+from django.conf import settings
+
 from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -67,6 +69,8 @@ def dashboard(request):
         # Most recent human-review request, so an unverified student sees
         # where their registration stands instead of a generic "pending".
         'latest_review': None if user.is_verified else ReviewRequest.objects.filter(user=user).first(),
+        # The card waits for a photo (settings.REQUIRE_PHOTO_FOR_CARD).
+        'photo_needed': settings.REQUIRE_PHOTO_FOR_CARD and not user.profile_picture,
     }
     return render(request, 'cards/dashboard.html', context)
 
@@ -106,8 +110,10 @@ def card_qr_image(request):
     dashboard). Only ever their own card - there is no card number in the URL."""
     student_card = get_object_or_404(StudentCard, user=request.user)
     response = HttpResponse(render_card_qr_png(student_card.card_number, request), content_type='image/png')
-    # Private: it identifies the student's card, so shared caches must not keep it.
-    response['Cache-Control'] = 'private, max-age=300'
+    # Never cached: it identifies the student's card, and after a reissue the
+    # old code must disappear at once rather than linger for minutes. It is
+    # a tiny image, cheap to draw on every view.
+    response['Cache-Control'] = 'no-store'
     return response
 
 
@@ -251,6 +257,7 @@ def performance_dashboard(request):
             Q(status='expired') | Q(status='active', expiry_date__lt=today)
         ).count(),
         'pending_reviews_count': ReviewRequest.objects.filter(status='pending').count(),
+        'pending_photo_changes_count': students_with_photo_changes().count(),
     }
 
     # Site traffic
@@ -493,8 +500,42 @@ def report_review_requests(request):
     return render(request, 'cards/report_review_requests.html', {
         'pending': pending,
         'resolved': resolved,
+        'photo_changes': students_with_photo_changes(),
         'today': timezone.now().date(),
     })
+
+
+def students_with_photo_changes():
+    return User.objects.exclude(pending_profile_picture='').exclude(pending_profile_picture__isnull=True).order_by('pk')
+
+
+@staff_member_required(login_url='login')
+@require_POST
+def resolve_photo_change(request, user_id):
+    """Approve or reject a new photo a student uploaded after their card was
+    issued. The card's photo is what a guard compares with the holder's face,
+    so it only changes once a person has checked it is the same student."""
+    student = get_object_or_404(User, pk=user_id)
+    if not student.pending_profile_picture:
+        messages.info(request, 'That photo change has already been decided.')
+        return redirect('report_review_requests')
+
+    action = request.POST.get('action')
+    if action == 'approve':
+        if student.profile_picture:
+            student.profile_picture.delete(save=False)
+        student.profile_picture = student.pending_profile_picture.name
+        student.pending_profile_picture = None
+        student.save(update_fields=['profile_picture', 'pending_profile_picture'])
+        messages.success(request, f"Approved {student.get_full_name_display()}'s new photo - it now shows on their card.")
+    elif action == 'reject':
+        student.pending_profile_picture.delete(save=False)
+        student.pending_profile_picture = None
+        student.save(update_fields=['pending_profile_picture'])
+        messages.success(request, f"Rejected {student.get_full_name_display()}'s new photo - their card keeps the current one.")
+    else:
+        messages.error(request, 'Choose Approve or Reject.')
+    return redirect('report_review_requests')
 
 
 @staff_member_required(login_url='login')
@@ -567,6 +608,7 @@ def resolve_review_request(request, review_id):
         result = {
             'issued': 'card issued',
             'awaiting_email': 'card will be issued once they confirm their email',
+            'awaiting_photo': 'card will be issued once they add a profile photo',
             'exists': "their existing card now runs to the confirmed date",
         }.get(outcome, 'verified')
         messages.success(request, f'Approved {student.get_full_name_display()} - {result}.')

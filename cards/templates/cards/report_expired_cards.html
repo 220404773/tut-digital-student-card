@@ -33,7 +33,7 @@
                             <form method="post" action="{% url 'admin:accounts_user_reissue_card' card.user.id %}"
                                   data-confirm="Reissue a new card number and QR code for {{ card.user.get_full_name_display }}? Their old card number will stop working.">
                                 {% csrf_token %}
-                                <button type="submit" class="btn btn-sm" style="background:#198754; color:#fff;">Reissue</button>
+                                <button type="submit" class="btn btn-sm" style="background:#146c43; color:#fff;">Reissue</button>
                             </form>
                         </td>
                     </tr>

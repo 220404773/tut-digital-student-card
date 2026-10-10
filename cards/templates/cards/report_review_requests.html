@@ -6,7 +6,7 @@
 <div class="page-header">
     <div class="container">
         <h1>Review Requests</h1>
-        <p class="lead">{{ pending|length }} pending — students the automated check didn't verify, waiting for a person to decide</p>
+        <p class="lead">{{ pending|length }} registration review{{ pending|length|pluralize }} and {{ photo_changes|length }} photo change{{ photo_changes|length|pluralize }} waiting for a staff member to decide</p>
     </div>
 </div>
 
@@ -14,7 +14,7 @@
     <p class="text-muted">
         The uploaded document is deleted after processing, so confirm each student's registration with
         the university's own records (e.g. iEnabler) before approving, and enter the registration end date
-        you confirmed. Approving issues the card once the student has confirmed their email.
+        you confirmed. Approving issues the card once the student has confirmed their email and added a photo.
     </p>
 
     <h2 class="h5 mt-4">Pending</h2>
@@ -52,8 +52,8 @@
                                     through it - it asks for confirmation too, so Enter can't verify a
                                     student by accident.
                                 {% endcomment %}
-                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#198754; color:#fff;"
-                                        data-confirm="Approve {{ review.user.get_full_name_display }}? They will be verified and their card issued once their email is confirmed.">Approve</button>
+                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                        data-confirm="Approve {{ review.user.get_full_name_display }}? They will be verified, and their card issued once their email is confirmed and they have a photo.">Approve</button>
                                 <button type="submit" name="action" value="decline" class="btn btn-sm btn-outline-danger"
                                         data-confirm="Decline the review for {{ review.user.get_full_name_display }}? They will see your note on their dashboard.">Decline</button>
                             </form>
@@ -62,6 +62,58 @@
                 {% empty %}
                     <tr>
                         <td colspan="6" class="text-center text-muted">No reviews waiting</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="h5 mt-5">Photo changes</h2>
+    <p class="text-muted">
+        A student's card photo is what campus staff compare with their face, so a new photo uploaded after
+        the card was issued only replaces it once you have checked it shows the same person.
+    </p>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th>
+                    <th>Student Number</th>
+                    <th>Current photo</th>
+                    <th>New photo</th>
+                    <th>Decision</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in photo_changes %}
+                    <tr>
+                        <td><a href="{% url 'staff_student_detail' student.id %}">{{ student.get_full_name_display }}</a></td>
+                        <td>{{ student.student_number }}</td>
+                        <td>
+                            {% if student.profile_picture %}
+                                <img src="{{ student.profile_picture.url }}" alt="Current photo of {{ student.get_full_name_display }}"
+                                     style="width: 72px; height: 72px; object-fit: cover;" class="rounded">
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <img src="{{ student.pending_profile_picture.url }}" alt="New photo uploaded by {{ student.get_full_name_display }}"
+                                 style="width: 72px; height: 72px; object-fit: cover;" class="rounded">
+                        </td>
+                        <td>
+                            <form method="post" action="{% url 'resolve_photo_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                        data-confirm="Approve the new photo for {{ student.get_full_name_display }}? It will replace the photo on their card.">Approve</button>
+                                <button type="submit" name="action" value="reject" class="btn btn-sm btn-outline-danger"
+                                        data-confirm="Reject the new photo for {{ student.get_full_name_display }}? Their card keeps the current photo.">Reject</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">No photo changes waiting</td>
                     </tr>
                 {% endfor %}
             </tbody>
