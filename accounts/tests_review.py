@@ -140,8 +140,57 @@ class StaffDecisionTests(TestCase):
     def _resolve(self, **data):
         return self.client.post(reverse('resolve_review_request', args=[self.review.id]), data)
 
-    def test_queue_lists_pending_requests(self):
-        self.assertContains(self.client.get(reverse('report_review_requests')), '220404773')
+    def test_queue_lists_pending_requests_with_a_decision_form(self):
+        response = self.client.get(reverse('report_review_requests'))
+        self.assertContains(response, reverse('staff_student_detail', args=[self.student.id]))
+        self.assertContains(response, 'Student asked for a review')
+        self.assertContains(response, reverse('resolve_review_request', args=[self.review.id]))
+
+    def test_approve_asks_for_confirmation_so_enter_cannot_approve_silently(self):
+        """Enter in the date or note field submits through Approve, the first
+        button - it must prompt, not verify the student straight away."""
+        response = self.client.get(reverse('report_review_requests'))
+        self.assertRegex(response.content.decode(), r'value="approve"[^>]*\s+data-confirm="Approve ')
+
+    def test_an_end_date_more_than_a_year_away_is_refused(self):
+        self._resolve(action='approve', registration_end_date=(timezone.now().date() + timedelta(days=400)).isoformat())
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, 'pending')
+        self.assertFalse(User.objects.get(pk=self.student.pk).is_verified)
+
+    def test_a_second_decision_on_the_same_review_is_refused_cleanly(self):
+        """Two staff approving the same request used to risk a server error."""
+        self._resolve(action='approve', registration_end_date=self.end.isoformat())
+        response = self.client.post(
+            reverse('resolve_review_request', args=[self.review.id]),
+            {'action': 'decline'}, follow=True,
+        )
+        self.assertContains(response, 'already been decided')
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, 'approved')
+        self.assertEqual(StudentCard.objects.filter(user=self.student).count(), 1)
+
+    def test_a_card_failure_undoes_the_whole_decision(self):
+        """Nothing half-saved: the student isn't left verified with the
+        review still pending."""
+        with patch('cards.utils.generate_student_card', side_effect=RuntimeError('storage down')):
+            response = self._resolve(action='approve', registration_end_date=self.end.isoformat())
+        self.assertEqual(response.status_code, 302)
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, 'pending')
+        self.assertFalse(User.objects.get(pk=self.student.pk).is_verified)
+
+    def test_approving_moves_an_existing_cards_expiry_to_the_confirmed_date(self):
+        StudentCard.objects.create(user=self.student, card_number='TUT-OLD-0001',
+                                   expiry_date=timezone.now().date() - timedelta(days=3), status='expired')
+        self._resolve(action='approve', registration_end_date=self.end.isoformat())
+        card = StudentCard.objects.get(user=self.student)
+        self.assertEqual((card.expiry_date, card.status), (self.end, 'active'))
+
+    def test_approving_does_not_bring_back_a_revoked_card(self):
+        StudentCard.objects.create(user=self.student, card_number='TUT-OLD-0002', status='revoked')
+        self._resolve(action='approve', registration_end_date=self.end.isoformat())
+        self.assertEqual(StudentCard.objects.get(user=self.student).status, 'revoked')
 
     def test_approving_verifies_the_student_and_issues_the_card(self):
         self._resolve(action='approve', registration_end_date=self.end.isoformat())
@@ -200,6 +249,144 @@ class StaffDecisionTests(TestCase):
 
         self.assertFalse(StudentCard.objects.filter(user=self.student).exists())
         self.assertIn('once they confirm their email', message_user.call_args.args[1])
+
+    def test_admin_verified_tick_closes_the_pending_review(self):
+        """Verifying a student in the admin used to leave their request
+        waiting in the staff queue."""
+        from django.contrib.admin.sites import site
+        from django.test import RequestFactory
+
+        self.student.is_verified = True
+        request = RequestFactory().post('/admin/')
+        request.user = self.staff
+        model_admin = site._registry[User]
+        with patch.object(model_admin, 'message_user'):
+            model_admin.save_model(request, self.student, form=None, change=True)
+
+        self.review.refresh_from_db()
+        self.assertEqual((self.review.status, self.review.resolved_by), ('approved', self.staff))
+        self.assertEqual(self.client.get(reverse('report_review_requests')).context['pending'].count(), 0)
+
+
+class OnePendingReviewTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!',
+        )
+
+    def test_the_database_refuses_a_second_pending_review(self):
+        from django.db import IntegrityError, transaction
+
+        ReviewRequest.objects.create(user=self.student, reason='student_request')
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ReviewRequest.objects.create(user=self.student, reason='low_confidence')
+
+    def test_open_for_returns_the_existing_request(self):
+        first = ReviewRequest.open_for(self.student, 'student_request')
+        self.assertEqual(ReviewRequest.open_for(self.student, 'low_confidence'), first)
+
+    def test_a_decided_review_does_not_block_a_new_one(self):
+        ReviewRequest.objects.create(user=self.student, reason='student_request', status='declined')
+        ReviewRequest.open_for(self.student, 'student_request')
+        self.assertEqual(ReviewRequest.objects.filter(user=self.student).count(), 2)
+
+
+@override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+class SuspiciousDocumentTests(TestCase):
+    """A document whose text appeared to address the AI was never shown to
+    the model, so the automated check can't verify it - a person does."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_signup_sends_it_to_a_person(self):
+        with patch('accounts.views.process_registration_proof',
+                   return_value=dict(ocr_result(), needs_human_review=True)):
+            self.client.post(reverse('signup'), signup_payload())
+        user = User.objects.get()
+        self.assertFalse(user.is_verified)
+        self.assertEqual(ReviewRequest.objects.get().reason, 'suspicious_content')
+
+    def test_reupload_sends_it_to_a_person(self):
+        student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!',
+        )
+        self.client.force_login(student)
+        with patch('accounts.views.process_registration_proof',
+                   return_value=dict(ocr_result(), needs_human_review=True)):
+            self.client.post(reverse('reupload_proof'), {
+                'registration_proof': SimpleUploadedFile('p.pdf', b'%PDF-1.4\n%x', content_type='application/pdf'),
+            })
+        student.refresh_from_db()
+        self.assertFalse(student.is_verified)
+        self.assertEqual(ReviewRequest.objects.get().reason, 'suspicious_content')
+
+
+@override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+class OneCardRuleTests(TestCase):
+    """Every path issues the first card through issue_card_if_allowed."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!', is_verified=True, email_confirmed=True,
+        )
+
+    def test_issuing_twice_gives_one_card(self):
+        from cards.utils import issue_card_if_allowed
+        self.assertEqual(issue_card_if_allowed(self.student), 'issued')
+        self.assertEqual(issue_card_if_allowed(self.student), 'exists')
+        self.assertEqual(StudentCard.objects.filter(user=self.student).count(), 1)
+
+    def test_an_unverified_student_never_gets_a_card(self):
+        from cards.utils import issue_card_if_allowed
+        self.student.is_verified = False
+        self.student.save()
+        self.assertEqual(issue_card_if_allowed(self.student), 'not_verified')
+        self.assertFalse(StudentCard.objects.exists())
+
+    def test_restoring_a_deleted_student_waits_for_email_confirmation(self):
+        """Restoring is a new verification: the card follows the same rule."""
+        from accounts.models import DeletedStudentLog
+        staff = User.objects.create_superuser(
+            username='admin@tut4life.ac.za', email='admin@tut4life.ac.za',
+            student_number='STAFF-0001', password='StrongPass123!',
+        )
+        entry = DeletedStudentLog.objects.create(
+            student_number='220404999', full_name='Former Student', email='220404999@tut4life.ac.za',
+            was_verified=True, had_card=True, registration_end_date=timezone.now().date() + timedelta(days=60),
+        )
+        self.client.force_login(staff)
+        self.client.post(reverse('reissue_deleted_student', args=[entry.pk]))
+        restored = User.objects.get(student_number='220404999')
+        self.assertTrue(restored.is_verified)
+        self.assertFalse(StudentCard.objects.filter(user=restored).exists())
+
+
+class ReviewMessageRetentionTests(TestCase):
+    @override_settings(ACTIVITY_RETENTION_DAYS=90)
+    def test_old_decided_reviews_lose_the_message_but_keep_the_decision(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!',
+        )
+        old = ReviewRequest.objects.create(
+            user=student, reason='student_request', message='My personal circumstances...',
+            status='declined', staff_note='Not registered', resolved_at=timezone.now() - timedelta(days=91),
+        )
+        pending = ReviewRequest.objects.create(user=student, reason='student_request', message='Still waiting')
+
+        call_command('purge_old_activity', stdout=StringIO())
+
+        old.refresh_from_db()
+        pending.refresh_from_db()
+        self.assertEqual((old.message, old.status, old.staff_note), ('', 'declined', 'Not registered'))
+        self.assertEqual(pending.message, 'Still waiting')
 
 
 @override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)

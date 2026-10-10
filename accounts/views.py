@@ -1,27 +1,33 @@
+import logging
 import re
 from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
 from django.core.cache import cache
-from django.core.mail import send_mail
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.template.loader import render_to_string
 from django.views.decorators.http import require_http_methods
 from django_ratelimit.decorators import ratelimit
 from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.http import urlsafe_base64_decode
 from django.db import models
 from .models import ReviewRequest, User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
+from .login_guard import clear_failed_logins, login_wait_seconds, record_failed_login
+from tut_student_card.client_ip import get_client_ip
+from .services import (
+    EMAIL_NOT_CONFIGURED_MESSAGE, confirmation_cooldown_remaining, email_is_delivered,
+    normalise_student_number, send_confirmation_email, split_full_name,
+)
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
-from cards.utils import process_registration_proof, generate_student_card, parse_registration_end_date, registration_period_has_expired, registration_period_is_implausible, link_recent_anonymous_visits, hash_uploaded_file
+from cards.utils import process_registration_proof, issue_card_if_allowed, parse_registration_end_date, registration_period_has_expired, registration_period_is_implausible, link_recent_anonymous_visits, hash_uploaded_file
+
+logger = logging.getLogger(__name__)
 
 OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 
@@ -31,96 +37,17 @@ OCR_PREVIEW_SESSION_KEY = 'ocr_preview_cache'
 # consumed downstream. Session data is DB-backed by default, so caching the
 # unfiltered result would persist those extra fields to the database for the
 # life of the session, not just "the required derived fields".
-_OCR_CACHE_FIELDS = ('error', 'student_number', 'full_name', 'email', 'period', 'confidence_score', 'quality_score', 'document_classification_confidence')
+_OCR_CACHE_FIELDS = ('error', 'student_number', 'full_name', 'email', 'period', 'confidence_score', 'quality_score', 'document_classification_confidence', 'needs_human_review')
 
 
 def _scoped_ocr_cache(ocr_result):
     return {key: ocr_result[key] for key in _OCR_CACHE_FIELDS if key in ocr_result}
 
 
-def _normalise_student_number(value):
-    """Compare student numbers on their characters only - OCR and typing
-    both introduce stray spaces, dashes and case differences that don't
-    change which student the number identifies."""
-    return re.sub(r'[^0-9A-Za-z]', '', value or '').upper()
-
-
-def _posted_email_key(group, request):
-    """Rate-limit key for login: the account being tried, not the network.
-    A whole campus shares one public IP address, so an IP-only limit locked
-    out the 11th student logging in that minute; a per-account limit still
-    stops password guessing against any one student."""
-    return (request.POST.get('email') or '').strip().lower()
-
-
-# Backends that don't deliver mail anywhere - used to avoid telling a student
-# "check your inbox" when nothing was actually sent.
-_NON_DELIVERING_EMAIL_BACKENDS = (
-    'django.core.mail.backends.console.EmailBackend',
-    'django.core.mail.backends.dummy.EmailBackend',
-)
-
-
-def email_is_delivered():
-    return settings.EMAIL_BACKEND not in _NON_DELIVERING_EMAIL_BACKENDS
-
-
-EMAIL_NOT_CONFIGURED_MESSAGE = (
-    "Email delivery isn't set up on this server, so no confirmation email was sent. "
-    "The confirmation link was written to the server log instead."
-)
-
-# Minimum wait between confirmation emails to the same account - matches the
-# ~60s resend cooldown most mail-sending flows use (GitHub, Google account
-# recovery, etc.), long enough to cover normal delivery delay so a student
-# can't spam themselves (and the mail provider) with repeat sends.
-EMAIL_CONFIRMATION_COOLDOWN_SECONDS = 60
-
-
-def _confirmation_cooldown_key(user):
-    return f'email_confirmation_cooldown_{user.pk}'
-
-
-def start_confirmation_cooldown(user):
-    allowed_at = timezone.now() + timedelta(seconds=EMAIL_CONFIRMATION_COOLDOWN_SECONDS)
-    cache.set(_confirmation_cooldown_key(user), allowed_at, EMAIL_CONFIRMATION_COOLDOWN_SECONDS)
-
-
-def confirmation_cooldown_remaining(user):
-    """Whole seconds left before another confirmation email can be sent to
-    this user, or 0 if they're clear to send/resend now."""
-    allowed_at = cache.get(_confirmation_cooldown_key(user))
-    if not allowed_at:
-        return 0
-    return max(0, round((allowed_at - timezone.now()).total_seconds()))
-
-
 def post_login_redirect(user):
     """Staff/admin accounts have no student card - send them to the admin
     reporting page instead of the student dashboard."""
     return redirect('performance_dashboard') if user.is_staff else redirect('dashboard')
-
-
-def send_confirmation_email(user, request):
-    """Email a link that proves the student controls the email address on
-    their account - independent of the OCR document check, which only
-    confirms a document was read successfully, not who's holding it."""
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = email_confirmation_token.make_token(user)
-    confirm_path = reverse('confirm_email', args=[uid, token])
-    confirm_url = request.build_absolute_uri(confirm_path)
-
-    body = render_to_string('accounts/email_confirmation_email.html', {
-        'user': user,
-        'confirm_url': confirm_url,
-    })
-    send_mail(
-        subject='Confirm your TUT Digital Student Card email',
-        message=body,
-        from_email=settings.DEFAULT_FROM_EMAIL,
-        recipient_list=[user.email],
-    )
-    start_confirmation_cooldown(user)
 
 
 def delete_registration_proof(user):
@@ -139,19 +66,7 @@ def delete_registration_proof(user):
             user.registration_proof = None
             user.save()
         except Exception as e:
-            print(f"Error deleting proof file: {str(e)}")
-
-
-def split_full_name(full_name):
-    """Split an extracted full name into first and last name parts."""
-    if not full_name:
-        return '', ''
-
-    parts = full_name.split()
-    if len(parts) == 1:
-        return parts[0].title(), ''
-
-    return parts[0].title(), ' '.join(parts[1:]).title()
+            logger.warning(f"Error deleting proof file: {str(e)}")
 
 
 @require_http_methods(['POST'])
@@ -230,8 +145,9 @@ def preview_registration_proof(request):
             'full_name': ocr_result.get('full_name', ''),
             'confidence_score': ocr_result.get('confidence_score', 0),
         })
-    except Exception as e:
-        return JsonResponse({'success': False, 'message': str(e)}, status=400)
+    except Exception:
+        logger.exception("Document preview failed")
+        return JsonResponse({'success': False, 'message': 'This document could not be read. Please try again.'}, status=400)
 
 
 @require_http_methods(['GET', 'POST'])
@@ -400,8 +316,8 @@ def signup(request):
                         # all) goes to a human rather than being rejected
                         # outright, because a single misread digit would
                         # otherwise lock out a legitimate student.
-                        extracted_number = _normalise_student_number(ocr_result.get('student_number'))
-                        if extracted_number != _normalise_student_number(user.student_number):
+                        extracted_number = normalise_student_number(ocr_result.get('student_number'))
+                        if extracted_number != normalise_student_number(user.student_number):
                             student_number_mismatch = True
                             review_reason = 'number_mismatch'
                             user.is_verified = False
@@ -417,6 +333,17 @@ def signup(request):
                                     'We could not read a student number from your document. '
                                     'Your account has been created and sent to an administrator for manual review.'
                                 )
+                        elif ocr_result.get('needs_human_review'):
+                            # The document's text appeared to address the AI,
+                            # so it was never shown to the model - a person
+                            # decides instead of the automated check.
+                            review_reason = 'suspicious_content'
+                            user.is_verified = False
+                            messages.warning(
+                                request,
+                                'Your document could not be verified automatically. '
+                                'Your account has been created and sent to a staff member for review.'
+                            )
                         else:
                             user.is_verified = True
                             # Only bind the document to the account once it has
@@ -449,18 +376,23 @@ def signup(request):
                                 'Your document could not be verified automatically. From your dashboard you can '
                                 'upload a clearer copy, or ask a staff member to review your registration.'
                             )
-                except Exception as e:
+                except Exception:
+                    logger.exception("Signup document processing failed")
                     user.is_verified = False
-                    messages.warning(request, f'OCR processing error: {str(e)}. Please try again.')
+                    messages.warning(
+                        request,
+                        'Your document could not be processed. From your dashboard you can upload it again, '
+                        'or ask a staff member to review your registration.'
+                    )
             
             _t_save = timezone.now()
             user.save()
-            print(f"user.save() took {(timezone.now() - _t_save).total_seconds():.2f}s")
+            logger.info(f"user.save() took {(timezone.now() - _t_save).total_seconds():.2f}s")
             if review_reason:
                 ReviewRequest.open_for(user, review_reason)
             _t_delete = timezone.now()
             delete_registration_proof(user)
-            print(f"delete_registration_proof() took {(timezone.now() - _t_delete).total_seconds():.2f}s")
+            logger.info(f"delete_registration_proof() took {(timezone.now() - _t_delete).total_seconds():.2f}s")
 
             # Track signup metrics
             signup_end_time = timezone.now()
@@ -476,8 +408,8 @@ def signup(request):
                     file_upload_size_mb=file_upload_size_mb,
                 )
             except Exception as e:
-                print(f"Error tracking signup metrics: {str(e)}")
-            print(f"SignupMetrics.create() took {(timezone.now() - _t_signup_metrics).total_seconds():.2f}s")
+                logger.warning(f"Error tracking signup metrics: {str(e)}")
+            logger.info(f"SignupMetrics.create() took {(timezone.now() - _t_signup_metrics).total_seconds():.2f}s")
 
             # Track OCR metrics if OCR was performed
             if ocr_result:
@@ -505,51 +437,39 @@ def signup(request):
                         document_classification_confidence=ocr_result.get('document_classification_confidence', 0) * 100,
                     )
                 except Exception as e:
-                    print(f"Error tracking OCR metrics: {str(e)}")
-                print(f"OCRMetrics.create() took {(timezone.now() - _t_ocr_metrics).total_seconds():.2f}s")
+                    logger.warning(f"Error tracking OCR metrics: {str(e)}")
+                logger.info(f"OCRMetrics.create() took {(timezone.now() - _t_ocr_metrics).total_seconds():.2f}s")
             
-            # Generate digital card if verified. When email confirmation is
-            # required, the card is deferred until confirm_email() runs - the
-            # document alone never proves the uploader is the person named on
-            # it, so control of {student_number}@tut4life.ac.za is used as the
-            # second factor before a card exists.
-            if user.is_verified and settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD:
-                messages.info(
-                    request,
-                    'Your registration was verified. Confirm your email address to receive your digital student card.'
-                )
-            elif user.is_verified:
-                try:
-                    card_gen_start = timezone.now()
-                    generate_student_card(user, request)
-                    card_gen_duration = (timezone.now() - card_gen_start).total_seconds()
-                    print(f"Card generation (incl. QR upload) took {card_gen_duration:.2f}s for {user.email}")
-                    messages.success(request, 'Your digital student card has been generated!')
-                except Exception as e:
-                    messages.error(request, f'Error generating card: {str(e)}')
+            # Issue the card if verified. When email confirmation is required,
+            # the card is deferred until confirm_email() runs - the document
+            # alone never proves the uploader is the person named on it, so
+            # control of {student_number}@tut4life.ac.za is used as the second
+            # factor before a card exists.
+            if user.is_verified:
+                _issue_first_card(request, user)
 
             # Auto-login the user
             _t_login = timezone.now()
             login(request, user)
-            print(f"login() took {(timezone.now() - _t_login).total_seconds():.2f}s")
+            logger.info(f"login() took {(timezone.now() - _t_login).total_seconds():.2f}s")
 
             # Attribute their pre-signup page visits (e.g. viewing the signup
             # form) to the account that just got created.
             _t_link_visits = timezone.now()
             link_recent_anonymous_visits(user, request)
-            print(f"link_recent_anonymous_visits() took {(timezone.now() - _t_link_visits).total_seconds():.2f}s")
+            logger.info(f"link_recent_anonymous_visits() took {(timezone.now() - _t_link_visits).total_seconds():.2f}s")
 
             try:
                 email_send_start = timezone.now()
                 send_confirmation_email(user, request)
                 email_send_duration = (timezone.now() - email_send_start).total_seconds()
-                print(f"Confirmation email handed to {settings.EMAIL_BACKEND} for {user.email} (took {email_send_duration:.2f}s)")
+                logger.info(f"Confirmation email handed to {settings.EMAIL_BACKEND} for user {user.pk} (took {email_send_duration:.2f}s)")
                 if email_is_delivered():
                     messages.info(request, 'Please check your email to confirm your address.')
                 else:
                     messages.warning(request, EMAIL_NOT_CONFIGURED_MESSAGE)
             except Exception as e:
-                print(f"Error sending confirmation email to {user.email}: {str(e)}")
+                logger.warning(f"Error sending confirmation email to user {user.pk}: {str(e)}")
                 messages.warning(
                     request,
                     "Your account was created, but we couldn't send your confirmation email. "
@@ -646,16 +566,16 @@ def confirm_email(request, uidb64, token):
             messages.success(request, 'Your email address has been confirmed!')
             # Card issue is deferred to this point when confirmation is
             # required, so this is where a verified student finally gets one.
-            if (
-                settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD
-                and user.is_verified
-                and not StudentCard.objects.filter(user=user).exists()
-            ):
-                try:
-                    generate_student_card(user, request)
+            try:
+                if issue_card_if_allowed(user, request) == 'issued':
                     messages.success(request, 'Your digital student card has been generated!')
-                except Exception as e:
-                    messages.warning(request, f'Email confirmed, but card generation failed: {str(e)}')
+            except Exception:
+                logger.exception("Card generation failed after email confirmation for user %s", user.pk)
+                messages.warning(
+                    request,
+                    'Your email is confirmed, but your card could not be generated right now. '
+                    'Please try again later or contact the student card office.'
+                )
         elif already_confirmed:
             messages.success(request, 'Your email address is already confirmed.')
         else:
@@ -681,13 +601,13 @@ def resend_confirmation_email(request):
             else:
                 try:
                     send_confirmation_email(request.user, request)
-                    print(f"Confirmation email handed to {settings.EMAIL_BACKEND} for {request.user.email}")
+                    logger.info(f"Confirmation email handed to {settings.EMAIL_BACKEND} for user {request.user.pk}")
                     if email_is_delivered():
                         messages.success(request, 'Confirmation email sent - please check your inbox.')
                     else:
                         messages.warning(request, EMAIL_NOT_CONFIGURED_MESSAGE)
                 except Exception as e:
-                    print(f"Error sending confirmation email to {request.user.email}: {str(e)}")
+                    logger.warning(f"Error sending confirmation email to user {request.user.pk}: {str(e)}")
                     messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
     elif getattr(request, 'limited', False):
         messages.error(request, 'Too many resend attempts - please wait a while and try again.')
@@ -774,8 +694,9 @@ def reupload_proof(request):
 
     try:
         ocr_result = process_registration_proof(registration_proof)
-    except Exception as e:
-        messages.warning(request, f'Could not process this document: {str(e)}. Please try again.')
+    except Exception:
+        logger.exception("Re-upload processing failed for user %s", request.user.pk)
+        messages.warning(request, 'Could not process this document. Please try again.')
         return redirect('reupload_proof')
 
     if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
@@ -790,13 +711,21 @@ def reupload_proof(request):
     # there's nothing to review - a document for a different student is simply
     # the wrong document. Without this, a student whose registration lapsed
     # could extend their own card using a classmate's current proof.
-    extracted_number = _normalise_student_number(ocr_result.get('student_number'))
+    extracted_number = normalise_student_number(ocr_result.get('student_number'))
     if not extracted_number:
         messages.warning(request, 'We could not read a student number from this document. Please upload a clearer copy.')
         return redirect('reupload_proof')
-    if extracted_number != _normalise_student_number(request.user.student_number):
+    if extracted_number != normalise_student_number(request.user.student_number):
         messages.warning(request, 'This proof of registration belongs to a different student number. Please upload your own.')
         return redirect('reupload_proof')
+    if ocr_result.get('needs_human_review'):
+        # The text appeared to address the AI, so a person decides.
+        ReviewRequest.open_for(request.user, 'suspicious_content')
+        messages.warning(
+            request,
+            'This document could not be verified automatically, so it has been sent to a staff member for review.'
+        )
+        return redirect('dashboard')
 
     registration_end_date = parse_registration_end_date(ocr_result.get('period'))
     if registration_period_has_expired(registration_end_date):
@@ -831,23 +760,31 @@ def reupload_proof(request):
         student_card.save()
         CardActivity.objects.create(student_card=student_card, activity_type='reactivated')
         messages.success(request, 'Your digital student card has been reactivated!')
-    elif settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD and not user.email_confirmed:
-        # Same rule as signup: a first card is only issued once the student
-        # has proved control of their student mailbox - confirm_email() will
-        # issue it then, now that the account is verified.
-        messages.info(request, 'Your registration was verified. Confirm your email address to receive your digital student card.')
     else:
-        try:
-            generate_student_card(user, request)
-            messages.success(request, 'Your digital student card has been generated!')
-        except Exception as e:
-            messages.error(request, f'Error generating card: {str(e)}')
+        _issue_first_card(request, user)
 
     return redirect('dashboard')
 
 
+def _issue_first_card(request, user):
+    """Issue a newly verified student's first card under the one card rule
+    (issue_card_if_allowed), and tell them what happened."""
+    try:
+        outcome = issue_card_if_allowed(user, request)
+    except Exception:
+        logger.exception("Card generation failed for user %s", user.pk)
+        messages.error(request, 'Your card could not be generated right now. Please try again later.')
+        return
+    if outcome == 'issued':
+        messages.success(request, 'Your digital student card has been generated!')
+    elif outcome == 'awaiting_email':
+        messages.info(request, 'Your registration was verified. Confirm your email address to receive your digital student card.')
+
+
 @require_http_methods(['GET', 'POST'])
-@ratelimit(key=_posted_email_key, rate='10/m', method='POST', block=False)
+# Outer ceiling per network. It is set for a campus, where many students
+# share one public IP address; failed-login protection is per account and
+# network instead (login_guard).
 @ratelimit(key='ip', rate='100/m', method='POST', block=False)
 def login_view(request):
     """
@@ -861,8 +798,16 @@ def login_view(request):
     form = LoginForm(request.POST or None, initial={'email': request.GET.get('email', '')})
 
     if request.method == 'POST' and getattr(request, 'limited', False):
-        messages.error(request, 'Too many login attempts. Please wait a minute and try again.')
+        messages.error(request, 'Too many login attempts from your network. Please wait a minute and try again.')
         return render(request, 'accounts/login.html', {'form': form})
+
+    if request.method == 'POST':
+        posted_email = (request.POST.get('email') or '').strip().lower()
+        client_ip = get_client_ip(request)
+        wait = login_wait_seconds(posted_email, client_ip)
+        if wait:
+            messages.error(request, f'Too many failed login attempts. Please wait {wait} seconds and try again.')
+            return render(request, 'accounts/login.html', {'form': form})
 
     if request.method == 'POST' and form.is_valid():
         email = form.cleaned_data['email']
@@ -873,13 +818,16 @@ def login_view(request):
             # so match the same way regardless of how it was typed at signup.
             matched_user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
+            record_failed_login(posted_email, client_ip)
             form.add_error('email', 'No account found with this email address.')
         else:
             authenticated_user = authenticate(request, username=matched_user.username, password=password)
             if authenticated_user is not None:
+                clear_failed_logins(posted_email, client_ip)
                 login(request, authenticated_user)
                 messages.success(request, f'Welcome back, {authenticated_user.first_name}!')
                 return post_login_redirect(authenticated_user)
+            record_failed_login(posted_email, client_ip)
             form.add_error('password', 'Incorrect password.')
 
     return render(request, 'accounts/login.html', {'form': form})

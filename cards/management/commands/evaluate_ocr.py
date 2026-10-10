@@ -26,7 +26,7 @@ from django.conf import settings
 from django.core.files import File
 from django.core.management.base import BaseCommand, CommandError
 
-from accounts.views import _normalise_student_number
+from accounts.services import normalise_student_number
 from cards.utils import parse_registration_end_date, process_registration_proof
 
 ET01_TARGET = 0.90
@@ -85,8 +85,8 @@ class Command(BaseCommand):
             if is_proof:
                 genuine += 1
                 if outcome == 'accepted':
-                    number_ok = _normalise_student_number(result.get('student_number')) == \
-                        _normalise_student_number(row['student_number'])
+                    number_ok = normalise_student_number(result.get('student_number')) == \
+                        normalise_student_number(row['student_number'])
                     name_ok = _same_name(result.get('full_name'), row['full_name'])
                     expected_end = date.fromisoformat(row['period_end']) if row['period_end'].strip() else None
                     date_ok = parse_registration_end_date(result.get('period')) == expected_end

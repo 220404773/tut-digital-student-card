@@ -1,5 +1,7 @@
 import functools
+import logging
 
+from django.db import transaction
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -13,14 +15,17 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import User, DeletedStudentLog, ReviewRequest
-from accounts.views import split_full_name, send_confirmation_email
+from accounts.services import confirmation_cooldown_remaining, send_confirmation_email, split_full_name
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import (
-    get_card_display_data, build_card_verification_url, generate_student_card,
-    issue_card_if_allowed, render_card_qr_png,
+    get_card_display_data, build_card_verification_url,
+    issue_card_if_allowed, registration_period_has_expired, registration_period_is_implausible,
+    render_card_qr_png,
 )
 from .google_wallet import build_google_wallet_save_url
 from tut_student_card.client_ip import get_client_ip
+
+logger = logging.getLogger(__name__)
 
 
 def student_required(view_func):
@@ -40,7 +45,6 @@ def dashboard(request):
     """
     Student dashboard showing their digital card.
     """
-    from accounts.views import confirmation_cooldown_remaining
 
     user = request.user
     try:
@@ -425,13 +429,15 @@ def reissue_deleted_student(request, log_id):
     student.set_password(get_random_string(32))
     student.save()
 
+    # The same card rule as every other path: the restored student has to
+    # reconfirm their mailbox first, so the card usually arrives then.
     try:
-        generate_student_card(student, request)
-        card = StudentCard.objects.filter(user=student).first()
-        if card:
+        if issue_card_if_allowed(student, request) == 'issued':
+            card = StudentCard.objects.filter(user=student).first()
             CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
-    except Exception as e:
-        messages.warning(request, f'Account restored, but card generation failed: {str(e)}')
+    except Exception:
+        logger.exception("Card generation failed while restoring student %s", student.pk)
+        messages.warning(request, 'Account restored, but the card could not be generated. Use Reissue to try again.')
 
     reset_form = PasswordResetForm(data={'email': student.email})
     if reset_form.is_valid():
@@ -497,45 +503,75 @@ def resolve_review_request(request, review_id):
     """Approve or decline a review. Approving needs the registration end date
     staff confirmed with the university - the uploaded document is deleted
     after processing, so it can't be the source - and issues the card under
-    the same email-confirmation rule as every other path."""
+    the same email-confirmation rule as every other path.
+
+    The whole decision is one transaction on a locked review row: two staff
+    deciding at once can't both act, and if issuing the card fails nothing is
+    saved, rather than leaving the student verified with the review pending.
+    """
     from datetime import date
 
-    review = get_object_or_404(ReviewRequest, pk=review_id, status='pending')
     action = request.POST.get('action')
     note = request.POST.get('staff_note', '').strip()[:1000]
-    student = review.user
+    if action not in ('approve', 'decline'):
+        messages.error(request, 'Choose Approve or Decline.')
+        return redirect('report_review_requests')
 
+    end_date = None
     if action == 'approve':
         try:
             end_date = date.fromisoformat(request.POST.get('registration_end_date', ''))
         except ValueError:
             messages.error(request, 'Enter the registration end date you confirmed with the university to approve.')
             return redirect('report_review_requests')
-        if end_date < timezone.now().date():
+        if registration_period_has_expired(end_date):
             messages.error(request, 'That registration end date has already passed - the card would be expired on issue.')
             return redirect('report_review_requests')
+        if registration_period_is_implausible(end_date):
+            # Same rule as the document check: a registration period doesn't
+            # run more than a year, so this is almost certainly a typo.
+            messages.error(request, f'{end_date:%d %b %Y} is more than a year away - check the date and try again.')
+            return redirect('report_review_requests')
 
-        student.is_verified = True
-        student.registration_end_date = end_date
-        student.save()
-        outcome = issue_card_if_allowed(student, request)
+    try:
+        with transaction.atomic():
+            review = (ReviewRequest.objects.select_for_update().select_related('user')
+                      .filter(pk=review_id, status='pending').first())
+            if review is None:
+                messages.info(request, 'This review has already been decided.')
+                return redirect('report_review_requests')
+            student = review.user
+
+            if action == 'approve':
+                # Update only these fields: saving the whole loaded row could
+                # overwrite changes made since it was read.
+                User.objects.filter(pk=student.pk).update(is_verified=True, registration_end_date=end_date)
+                # A card issued earlier (e.g. after an admin verification)
+                # follows the confirmed date too, unless it was revoked.
+                StudentCard.objects.filter(user=student).exclude(status='revoked').update(
+                    expiry_date=end_date, status='active',
+                )
+                outcome = issue_card_if_allowed(student, request)
+
+            review.status = 'approved' if action == 'approve' else 'declined'
+            review.staff_note = note
+            review.resolved_at = timezone.now()
+            review.resolved_by = request.user
+            review.save()
+    except Exception:
+        logger.exception("Resolving review %s failed", review_id)
+        messages.error(request, 'The decision could not be saved, so nothing was changed. Please try again.')
+        return redirect('report_review_requests')
+
+    if action == 'approve':
         result = {
             'issued': 'card issued',
             'awaiting_email': 'card will be issued once they confirm their email',
-            'exists': 'they already had a card',
-        }[outcome]
+            'exists': "their existing card now runs to the confirmed date",
+        }.get(outcome, 'verified')
         messages.success(request, f'Approved {student.get_full_name_display()} - {result}.')
-    elif action == 'decline':
-        messages.success(request, f'Declined the review for {student.get_full_name_display()}.')
     else:
-        messages.error(request, 'Choose Approve or Decline.')
-        return redirect('report_review_requests')
-
-    review.status = 'approved' if action == 'approve' else 'declined'
-    review.staff_note = note
-    review.resolved_at = timezone.now()
-    review.resolved_by = request.user
-    review.save()
+        messages.success(request, f'Declined the review for {student.get_full_name_display()}.')
     return redirect('report_review_requests')
 
 

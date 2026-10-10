@@ -1,4 +1,6 @@
+import logging
 import re
+from collections import Counter
 
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
@@ -6,10 +8,13 @@ from django.contrib.auth.models import Group
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
+from django.utils import timezone
 from cards.models import StudentCard, CardActivity
-from cards.utils import generate_student_card, generate_unique_card_number, issue_card_if_allowed
+from cards.utils import generate_unique_card_number, issue_card_if_allowed
 from .models import User, DeletedStudentLog, ReviewRequest
 from .views import delete_registration_proof
+
+logger = logging.getLogger(__name__)
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
 
@@ -46,16 +51,16 @@ class StudentUserAdmin(UserAdmin):
         return True
 
     def _reissue_single_card(self, student, request):
-        """Returns (reissued, newly_issued, failed) - exactly one is True."""
+        """Returns 'reissued', 'issued', 'awaiting_email', 'not_verified' or 'failed'."""
         card = StudentCard.objects.filter(user=student).first()
         if not card:
-            # No card yet - issue one the same way OCR/manual verification does,
-            # rather than silently doing nothing.
+            # No card yet - issue one under the same rule as every other path
+            # (verified, and email confirmed), rather than silently doing nothing.
             try:
-                generate_student_card(student, request)
-                return False, True, False
+                return issue_card_if_allowed(student, request)
             except Exception:
-                return False, False, True
+                logger.exception("Card generation failed for student %s", student.pk)
+                return 'failed'
 
         # A new card number is enough: the QR code is drawn from it each time
         # it's shown, so the old QR code stops working with no file to clean up.
@@ -68,7 +73,7 @@ class StudentUserAdmin(UserAdmin):
         card.expiry_date = student.registration_end_date or card.expiry_date
         card.save()
         CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
-        return True, False, False
+        return 'reissued'
 
     @admin.action(description='Revoke digital card')
     def revoke_card_action(self, request, queryset):
@@ -82,16 +87,14 @@ class StudentUserAdmin(UserAdmin):
 
     @admin.action(description='Reissue digital card (new card number + QR code)')
     def reissue_card_action(self, request, queryset):
-        reissued = newly_issued = failed = 0
-        for student in queryset:
-            r, n, f = self._reissue_single_card(student, request)
-            reissued += r
-            newly_issued += n
-            failed += f
-
-        message = f'Reissued {reissued} card(s), newly issued {newly_issued} card(s).'
-        if failed:
-            message += f' Failed to issue a card for {failed} student(s).'
+        outcomes = Counter(self._reissue_single_card(student, request) for student in queryset)
+        message = f"Reissued {outcomes['reissued']} card(s), newly issued {outcomes['issued']} card(s)."
+        if outcomes['awaiting_email']:
+            message += f" {outcomes['awaiting_email']} student(s) will get their card once they confirm their email."
+        if outcomes['not_verified']:
+            message += f" {outcomes['not_verified']} student(s) aren't verified, so no card was issued."
+        if outcomes['failed']:
+            message += f" Failed to issue a card for {outcomes['failed']} student(s)."
         self.message_user(request, message)
 
     def get_urls(self):
@@ -123,13 +126,18 @@ class StudentUserAdmin(UserAdmin):
         if request.method != 'POST':
             return HttpResponseNotAllowed(['POST'])
         student = get_object_or_404(User, pk=student_id)
-        reissued, newly_issued, failed = self._reissue_single_card(student, request)
-        if reissued:
-            self.message_user(request, f"Reissued {student.get_full_name_display()}'s digital card (new card number and QR code).")
-        elif newly_issued:
-            self.message_user(request, f'{student.get_full_name_display()} had no card yet - issued one.')
+        outcome = self._reissue_single_card(student, request)
+        name = student.get_full_name_display()
+        if outcome == 'reissued':
+            self.message_user(request, f"Reissued {name}'s digital card (new card number and QR code).")
+        elif outcome == 'issued':
+            self.message_user(request, f'{name} had no card yet - issued one.')
+        elif outcome == 'awaiting_email':
+            self.message_user(request, f'{name} will get their card once they confirm their email.', level=messages.WARNING)
+        elif outcome == 'not_verified':
+            self.message_user(request, f"{name} isn't verified, so no card was issued.", level=messages.WARNING)
         else:
-            self.message_user(request, f"Couldn't issue a card for {student.get_full_name_display()}.", level=messages.ERROR)
+            self.message_user(request, f"Couldn't issue a card for {name}.", level=messages.ERROR)
         return redirect('admin:accounts_user_change', student.pk)
 
     def _log_deletion(self, obj, deleted_by):
@@ -191,6 +199,14 @@ class StudentUserAdmin(UserAdmin):
         # OCR auto-verification path in signup(), so the card follows the same
         # rule: issued now, or once the student confirms their email.
         if obj.is_verified and not obj.is_staff:
+            # A staff member has just decided, so nothing is left in the
+            # review queue for this student.
+            closed = ReviewRequest.objects.filter(user=obj, status='pending').update(
+                status='approved', resolved_at=timezone.now(), resolved_by=request.user,
+                staff_note='Closed: verified by a staff member in the admin.',
+            )
+            if closed:
+                self.message_user(request, 'Their pending review request was closed.')
             try:
                 outcome = issue_card_if_allowed(obj, request)
                 if outcome == 'issued':

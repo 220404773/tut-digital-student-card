@@ -47,7 +47,13 @@
                                 <label class="visually-hidden" for="note-{{ review.id }}">Note to the student</label>
                                 <input type="text" id="note-{{ review.id }}" name="staff_note" maxlength="1000"
                                        class="form-control form-control-sm" style="width: 200px;" placeholder="Note to the student (optional)">
-                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#198754; color:#fff;">Approve</button>
+                                {% comment %}
+                                    Approve is the form's first button, so pressing Enter in a field submits
+                                    through it - it asks for confirmation too, so Enter can't verify a
+                                    student by accident.
+                                {% endcomment %}
+                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#198754; color:#fff;"
+                                        data-confirm="Approve {{ review.user.get_full_name_display }}? They will be verified and their card issued once their email is confirmed.">Approve</button>
                                 <button type="submit" name="action" value="decline" class="btn btn-sm btn-outline-danger"
                                         data-confirm="Decline the review for {{ review.user.get_full_name_display }}? They will see your note on their dashboard.">Decline</button>
                             </form>

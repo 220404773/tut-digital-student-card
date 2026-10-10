@@ -165,10 +165,10 @@ class LoginTests(TestCase):
         self.assertRedirects(response, reverse('performance_dashboard'))
 
     def test_login_rate_limited_after_threshold(self):
-        for _ in range(10):
+        for _ in range(5):
             self.client.post(reverse('login'), {'email': 'x@tut4life.ac.za', 'password': 'wrong'})
         limited_response = self.client.post(reverse('login'), {'email': 'x@tut4life.ac.za', 'password': 'wrong'})
-        self.assertContains(limited_response, 'Too many login attempts')
+        self.assertContains(limited_response, 'Too many failed login attempts')
 
 
 class PasswordResetTests(TestCase):

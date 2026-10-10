@@ -103,6 +103,7 @@ class ReviewRequest(models.Model):
         ('low_confidence', 'Document read with borderline confidence'),
         ('document_rejected', 'Document rejected as not a TUT proof of registration'),
         ('student_request', 'Student asked for a review'),
+        ('suspicious_content', 'Document text appeared to give instructions to the AI'),
     ]
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -123,13 +124,29 @@ class ReviewRequest(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            # At most one open request per student, enforced by the database
+            # so two requests at the same moment can't both create one.
+            models.UniqueConstraint(
+                fields=['user'], condition=models.Q(status='pending'), name='one_pending_review_per_student',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user.student_number} - {self.get_reason_display()} ({self.status})"
 
     @classmethod
     def open_for(cls, user, reason, message=''):
-        """Create a pending request unless one is already open - a student
-        shouldn't be able to queue up duplicates for staff."""
+        """Return the student's open request, creating one if there is none -
+        a student shouldn't be able to queue up duplicates for staff."""
+        from django.db import IntegrityError, transaction
+
         existing = cls.objects.filter(user=user, status='pending').first()
-        return existing or cls.objects.create(user=user, reason=reason, message=message)
+        if existing:
+            return existing
+        try:
+            with transaction.atomic():
+                return cls.objects.create(user=user, reason=reason, message=message)
+        except IntegrityError:
+            # A simultaneous request opened one first.
+            return cls.objects.get(user=user, status='pending')

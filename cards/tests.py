@@ -262,7 +262,7 @@ class StudentCardAdminTests(TestCase):
         self.request = factory.get('/admin/')
         self.request.user = self.staff
 
-    def test_manually_added_card_gets_number_and_qr_code(self):
+    def test_manually_added_card_gets_a_number_and_a_working_qr_code(self):
         from cards.utils import render_card_qr_png
 
         card = StudentCard(user=self.student)

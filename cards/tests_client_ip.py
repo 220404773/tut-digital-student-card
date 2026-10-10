@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
+from accounts.models import User
 from tut_student_card.client_ip import get_client_ip
 
 PROXY = '10.0.0.1'
@@ -45,35 +46,68 @@ class GetClientIpTests(SimpleTestCase):
         self.assertEqual(get_client_ip(request), '2001:db8::1')
 
 
+ATTACKER = '198.51.100.7'
+STUDENT = '203.0.113.9'
+
+
 @override_settings(TRUSTED_PROXY_COUNT=1)
-class LoginRateLimitTests(TestCase):
-    """A whole campus reaches the site from one public IP address, so login
-    is limited per account rather than per network: a class logging in
-    together isn't locked out, but guessing one student's password still is."""
+class LoginProtectionTests(TestCase):
+    """Only failed logins count, per email and network (accounts/login_guard.py):
+    a class on one campus network isn't locked out, and someone typing junk
+    at a student's predictable address can't lock that student out either."""
 
     def setUp(self):
         cache.clear()
+        self.student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!',
+        )
 
-    def _login_attempt(self, email, client_ip):
+    def _login(self, email, client_ip, password='wrong'):
         return self.client.post(
-            reverse('login'), {'email': email, 'password': 'wrong'},
+            reverse('login'), {'email': email, 'password': password},
             REMOTE_ADDR=PROXY, HTTP_X_FORWARDED_FOR=client_ip,
         )
 
     def test_a_class_on_one_network_is_not_locked_out(self):
         """The old per-IP limit blocked the 11th student on campus Wi-Fi."""
         for number in range(15):
-            response = self._login_attempt(f'2204047{number:02d}@tut4life.ac.za', '198.51.100.7')
-            self.assertNotContains(response, 'Too many')
+            self.assertNotContains(self._login(f'2204047{number:02d}@tut4life.ac.za', ATTACKER), 'Too many')
 
-    def test_guessing_one_accounts_password_is_blocked_from_any_network(self):
-        for _ in range(11):
-            self._login_attempt('target@tut4life.ac.za', '198.51.100.7')
-        self.assertContains(self._login_attempt('target@tut4life.ac.za', '198.51.100.7'), 'Too many')
-        # Switching network doesn't reset the count for that account.
-        self.assertContains(self._login_attempt('target@tut4life.ac.za', '203.0.113.9'), 'Too many')
+    def test_repeated_failures_make_that_network_wait(self):
+        for _ in range(5):
+            self._login('220404773@tut4life.ac.za', ATTACKER)
+        self.assertContains(self._login('220404773@tut4life.ac.za', ATTACKER), 'Please wait 30 seconds')
+
+    def test_the_wait_doubles_with_each_further_failure(self):
+        from accounts import login_guard
+        for _ in range(6):
+            login_guard.record_failed_login('220404773@tut4life.ac.za', ATTACKER)
+        self.assertAlmostEqual(login_guard.login_wait_seconds('220404773@tut4life.ac.za', ATTACKER), 60, delta=1)
+
+    def test_an_attacker_cannot_lock_the_student_out(self):
+        """The finding: junk logins at a student's address used to block the
+        real student too. Now they only slow down the attacker's network."""
+        for _ in range(20):
+            self._login('220404773@tut4life.ac.za', ATTACKER)
+        response = self._login('220404773@tut4life.ac.za', STUDENT, password='StrongPass123!')
+        self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
+
+    def test_guessing_spread_over_many_networks_pauses_the_account(self):
+        for number in range(50):
+            self._login('220404773@tut4life.ac.za', f'192.0.2.{number}')
+        self.assertContains(self._login('220404773@tut4life.ac.za', STUDENT, password='StrongPass123!'),
+                            'Too many failed login attempts')
+
+    def test_a_successful_login_clears_that_networks_count(self):
+        for _ in range(4):
+            self._login('220404773@tut4life.ac.za', STUDENT)
+        self._login('220404773@tut4life.ac.za', STUDENT, password='StrongPass123!')
+        self.client.logout()
+        self._login('220404773@tut4life.ac.za', STUDENT)
+        self.assertNotContains(self._login('220404773@tut4life.ac.za', STUDENT), 'Too many')
 
     def test_email_case_does_not_create_a_separate_allowance(self):
-        for _ in range(11):
-            self._login_attempt('target@tut4life.ac.za', '198.51.100.7')
-        self.assertContains(self._login_attempt('TARGET@tut4life.ac.za', '198.51.100.7'), 'Too many')
+        for _ in range(5):
+            self._login('220404773@tut4life.ac.za', ATTACKER)
+        self.assertContains(self._login('220404773@TUT4LIFE.ac.za', ATTACKER), 'Too many')

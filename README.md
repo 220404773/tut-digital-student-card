@@ -6,13 +6,13 @@ A digital student ID card system for Tshwane University of Technology. Students 
 
 ## Features
 
-- **Signup with document verification** — student number + proof of registration (PDF/JPG/PNG), read via Tesseract OCR and classified/extracted by Azure OpenAI (South Africa North), with NVIDIA as a fallback only if Azure fails
-- **Digital card** — auto-generated on verification, with a unique card number and QR code
+- **Signup with document verification** — student number + proof of registration (PDF/JPG/PNG), read via Tesseract OCR and classified/extracted by Azure OpenAI (South Africa North), with NVIDIA as a fallback only when Azure is configured but unavailable
+- **Digital card** — issued once the student is verified *and* has confirmed their student email, with a unique card number and a QR code drawn on demand
 - **Email confirmation** — a separate identity check from OCR verification, requiring an explicit button click (not just visiting the link) so email security scanners can't silently consume it
 - **Google Wallet** — "Add to Google Wallet" button, signed via a service account key, no custom branding required
 - **Public card verification** — scanning the QR code (or the Wallet pass) opens an unauthenticated page showing card validity, styled to match the card itself; an invalid/expired card is deliberately styled differently (red, not blue) so it reads as alarming to whoever scans it
 - **Admin reporting dashboard** — signup performance, OCR accuracy/confidence, email confirmation rate and time-to-confirm, site traffic, all with drill-down detail pages
-- **Rate limiting** on login, signup, OCR preview, password reset, and public verification
+- **Rate limiting** on signup, OCR preview, password reset and public verification, and failed-login protection per email and network (see *Rate limiting* below)
 - **Simplified Django admin** — staff accounts are just `is_staff` + `is_superuser` (no Groups/permissions management); ticking "is_verified" on a student is a manual/soft approval that auto-generates their card the same way OCR verification does; staff+superuser accounts get an auto-assigned placeholder student number (`STAFF-ADMIN-1`, `-2`, ...) since they aren't real students
 
 ## Project Structure
@@ -29,9 +29,9 @@ tut_student_card/
 ├── cards/                                        # Digital card, verification, admin reporting
 │   ├── models.py                                 # StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 │   ├── views.py                                  # Card display, QR download, public/private verification, admin reports
-│   ├── utils.py                                  # OCR pipeline, LLM classification, QR/card generation
+│   ├── utils.py                                  # OCR pipeline, LLM classification, QR drawing, the card-issue rule
 │   ├── google_wallet.py                          # Builds the signed "Add to Google Wallet" save URL
-│   ├── admin.py                                  # StudentCardAdmin (auto-generates card_number/QR, backfill action)
+│   ├── admin.py                                  # StudentCardAdmin (auto-generates card_number, backfill action)
 │   └── templates/cards/                           # Dashboard, card, verification pages, admin reports
 ├── tut_student_card/
 │   ├── settings.py                                # All configuration, env-var driven
@@ -116,16 +116,26 @@ For production values (DigitalOcean Managed Database, Spaces, Azure Communicatio
 
 1. Student uploads a proof-of-registration document (PDF/JPG/PNG, max 5MB, validated against actual file content, not just the extension)
 2. Text is extracted directly (PDFs with a real text layer) or via Tesseract OCR (scanned/photographed documents)
-3. ID numbers are removed from the text, then Azure OpenAI (`gpt-5-nano`, South Africa North) classifies whether it's genuinely a TUT proof of registration and extracts student number/name/dates in one call. If Azure fails, NVIDIA's hosted API is tried within the same 20-second budget; if both fail, a rule-based classifier takes over
+3. ID numbers are removed from the text, then Azure OpenAI (`gpt-5-nano`, South Africa North) classifies whether it's genuinely a TUT proof of registration and extracts student number/name/dates in one call. If Azure is configured but unavailable (unreachable, timed out, rate-limited or a server error), NVIDIA's hosted API is tried within the same 20-second budget. NVIDIA is never used on its own, and never after Azure has answered - even with an error or a malformed reply. If no model answers, a rule-based classifier takes over. Text that appears to give instructions to the AI is never sent to a model: a person reviews it instead
 4. A document is accepted only when the model says it is a TUT proof of registration *and* its confidence is at least 0.8, and the student number on it must match the one entered. The card is issued once the student confirms their `{student_number}@tut4life.ac.za` email
-5. Anything the system can't verify on its own (a student-number mismatch, a borderline score, or a rejection the student disputes) goes to a staff **Review Requests** queue, where a person makes the decision (POPIA s71)
+5. Anything the system can't verify on its own (a student-number mismatch, a borderline score, a document that tried to instruct the AI, or a rejection the student disputes) goes to a staff **Review Requests** queue, where a person makes the decision (POPIA s71)
 6. The uploaded document is deleted after processing regardless of outcome (POPIA) — including on every code path, not just the success path
 7. A confirmation email is sent separately — this verifies the student controls the email address, independent of the document check
 8. The card's QR code is drawn from its card number each time it's shown (never stored), pointing at `SITE_URL` when set
 
 ### Manual (admin) verification
 
-A staff member can tick "is_verified" on a student directly in Django admin — this is treated as an equivalent manual approval and generates the card the same way, so there's no separate "generate card" step to remember.
+A staff member can tick "is_verified" on a student directly in Django admin — this is treated as an equivalent manual approval: it closes any pending review request and issues the card under the same rule as every other path (once the student has confirmed their email). Every path issues the first card through `issue_card_if_allowed()` in `cards/utils.py`.
+
+### Rate limiting
+
+Limits are counted in Django's cache. With no `CACHES` setting that is the default **in-process memory cache**: each Gunicorn worker process keeps its own counts in its own memory.
+
+- **One worker (today):** every request goes through the same process, so every count is seen - the limits are exact.
+- **Several workers or instances:** each keeps a separate count, so the real limit becomes the limit times the number of processes, and a restart or redeploy clears all counts.
+- **Before scaling out**, point `CACHES` at a shared store all processes read and write - Redis (self-hosted, so the counts, which include IP addresses, stay in-country) or Django's database cache. Nothing else in the code changes.
+
+Login is protected per **email and network** rather than per network alone (`accounts/login_guard.py`): only failed logins count, and after 5 that pair waits 30 seconds, doubling up to 15 minutes. A campus sharing one IP address isn't locked out together, and someone typing junk at a student's address only slows their own network. 50 failures for one email in an hour, from anywhere, pause that account for 15 minutes.
 
 ## Deployment
 
@@ -134,7 +144,8 @@ Live on DigitalOcean App Platform. The full explicit runbook — including exact
 ## Known limitations
 
 - No third-party adversarial security review — hardening so far came from real bugs found via hands-on testing against the live deployment plus a dependency vulnerability scan, not a penetration test
-- Rate limiting uses Django's default in-process cache, correct for the current single-instance deployment but wouldn't hold across multiple instances without switching to a shared cache backend
+- Rate limiting and failed-login counts use Django's default in-process cache - correct only while one Gunicorn worker serves the site (see *Rate limiting*)
+- Document checks can't confirm a student against the university's own records (no access to iEnabler), so a convincing forged document is caught only by the student-number match, email confirmation and staff review
 - Google Wallet is in Demo Mode (test accounts only, "[TEST ONLY]" watermark) — going further would need Google's business verification review for publishing access
 
 

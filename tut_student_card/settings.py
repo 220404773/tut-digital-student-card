@@ -220,6 +220,25 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Application logs (document-pipeline timing, which AI provider answered,
+# failures) go to the console, which is what App Platform collects. Django
+# otherwise drops INFO messages from the app's own loggers. Logs carry
+# account ids, never document text, email addresses or keys.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'plain': {'format': '{asctime} {levelname} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+    },
+    'loggers': {
+        'accounts': {'handlers': ['console'], 'level': config('APP_LOG_LEVEL', default='INFO'), 'propagate': False},
+        'cards': {'handlers': ['console'], 'level': config('APP_LOG_LEVEL', default='INFO'), 'propagate': False},
+    },
+}
+
 # Map Django's "error" message tag to Bootstrap's "danger" class so error
 # alerts actually get styled (Bootstrap has no alert-error class).
 from django.contrib.messages import constants as message_constants
