@@ -220,6 +220,23 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# The cache holds rate-limit and failed-login counts and the email resend
+# cooldown. It lives in the database rather than each process's memory, so
+# counts are shared by every Gunicorn worker and survive a restart or deploy.
+# MAX_ENTRIES is raised from Django's default of 300: at 300, ~150 failed
+# logins for made-up emails pushed the real counters out and reset them.
+# (Past MAX_ENTRIES Django culls a share of the oldest rows, so this is the
+# point culling starts, not an exact size.)
+# Needs `manage.py createcachetable` (run on container start; the test
+# runner creates it itself).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'django_cache',
+        'OPTIONS': {'MAX_ENTRIES': 100_000},
+    },
+}
+
 # Application logs (document-pipeline timing, which AI provider answered,
 # failures) go to the console, which is what App Platform collects. Django
 # otherwise drops INFO messages from the app's own loggers. Logs carry

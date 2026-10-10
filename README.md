@@ -77,6 +77,7 @@ cp .env.example .env
 python manage.py collectstatic --noinput   # tests and DEBUG=False read the static manifest
 
 python manage.py migrate
+python manage.py createcachetable   # the database cache (rate-limit and login counts)
 python manage.py createsuperuser
 python manage.py runserver
 ```
@@ -129,13 +130,12 @@ A staff member can tick "is_verified" on a student directly in Django admin — 
 
 ### Rate limiting
 
-Limits are counted in Django's cache. With no `CACHES` setting that is the default **in-process memory cache**: each Gunicorn worker process keeps its own counts in its own memory.
+Limits are counted in Django's cache. A cache can live in two places:
 
-- **One worker (today):** every request goes through the same process, so every count is seen - the limits are exact.
-- **Several workers or instances:** each keeps a separate count, so the real limit becomes the limit times the number of processes, and a restart or redeploy clears all counts.
-- **Before scaling out**, point `CACHES` at a shared store all processes read and write - Redis (self-hosted, so the counts, which include IP addresses, stay in-country) or Django's database cache. Nothing else in the code changes.
+- **In-process memory** (Django's default): each Gunicorn worker keeps its own counts. With several workers the real limit becomes the limit times the number of workers, and every restart or deploy clears all counts. It also holds only 300 entries, so a flood of junk requests can push the real counters out.
+- **A shared store** that every process reads and writes. This project uses **Django's database cache** (`CACHES` in `settings.py`, table created by `manage.py createcachetable` on container start): counts are shared by all workers and survive restarts, and old entries are only culled once the table passes 100,000 (Django's default limit is 300). It costs nothing extra and keeps the counts (which include IP addresses) in the app's own database. Redis would do the same job faster if traffic ever grew that large.
 
-Login is protected per **email and network** rather than per network alone (`accounts/login_guard.py`): only failed logins count, and after 5 that pair waits 30 seconds, doubling up to 15 minutes. A campus sharing one IP address isn't locked out together, and someone typing junk at a student's address only slows their own network. 50 failures for one email in an hour, from anywhere, pause that account for 15 minutes.
+Login is protected per **email and network** rather than per network alone (`accounts/login_guard.py`): only failed logins count, and after 5 that pair waits 30 seconds, doubling up to 15 minutes. A campus sharing one IP address isn't locked out together, and someone typing junk at a student's address only slows their own network. 50 failures for one email within a clock hour, from anywhere, pause that account for 15 minutes. A new pause can't start within 60 minutes of the last one, so the worst a determined attacker can do is a 15-minute lockout in any hour, in exchange for capping guesses at 50 an hour.
 
 ## Deployment
 
@@ -144,7 +144,8 @@ Live on DigitalOcean App Platform. The full explicit runbook — including exact
 ## Known limitations
 
 - No third-party adversarial security review — hardening so far came from real bugs found via hands-on testing against the live deployment plus a dependency vulnerability scan, not a penetration test
-- Rate limiting and failed-login counts use Django's default in-process cache - correct only while one Gunicorn worker serves the site (see *Rate limiting*)
+- Someone with several networks can still pause one student's login for up to 15 minutes an hour (see *Rate limiting*)
+- The prompt-injection check is a pattern match: a reworded instruction can get past it, so the student-number match, email confirmation and staff review are what limit the damage
 - Document checks can't confirm a student against the university's own records (no access to iEnabler), so a convincing forged document is caught only by the student-number match, email confirmation and staff review
 - Google Wallet is in Demo Mode (test accounts only, "[TEST ONLY]" watermark) — going further would need Google's business verification review for publishing access
 

@@ -34,4 +34,6 @@ EXPOSE 8080
 # (e.g. ReviewRequest) then can't serve pages against a database that doesn't
 # have its table yet. Safe to repeat - migrate does nothing when up to date -
 # and the app runs as a single instance, so two containers never race.
-CMD ["sh", "-c", "python manage.py migrate --noinput && exec gunicorn tut_student_card.wsgi --bind=0.0.0.0:8080 --timeout=120"]
+# createcachetable makes the database cache's table (rate-limit and
+# failed-login counts, settings.CACHES); it also does nothing if it exists.
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py createcachetable && exec gunicorn tut_student_card.wsgi --bind=0.0.0.0:8080 --timeout=120"]

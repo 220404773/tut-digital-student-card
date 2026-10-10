@@ -1,9 +1,7 @@
 import logging
-import re
 from datetime import timedelta
 from urllib.parse import urlencode
 from django.conf import settings
-from django.core.cache import cache
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
@@ -21,7 +19,7 @@ from .login_guard import clear_failed_logins, login_wait_seconds, record_failed_
 from tut_student_card.client_ip import get_client_ip
 from .services import (
     EMAIL_NOT_CONFIGURED_MESSAGE, confirmation_cooldown_remaining, email_is_delivered,
-    normalise_student_number, send_confirmation_email, split_full_name,
+    delete_registration_proof, normalise_student_number, send_confirmation_email, split_full_name,
 )
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
@@ -48,25 +46,6 @@ def post_login_redirect(user):
     """Staff/admin accounts have no student card - send them to the admin
     reporting page instead of the student dashboard."""
     return redirect('performance_dashboard') if user.is_staff else redirect('dashboard')
-
-
-def delete_registration_proof(user):
-    """Delete the uploaded proof of registration after processing (POPIA
-    compliance) - goes through the storage backend's own API (not raw
-    os.path/MEDIA_ROOT) so this also works when storage is S3/Spaces-backed,
-    not just local disk. Must be called from every code path that saves a
-    user with a registration_proof attached, not just the final one - a
-    save() partway through signup() already uploads the file, so an early
-    return without this call leaves it sitting in storage indefinitely.
-    """
-    if user.registration_proof:
-        try:
-            if user.registration_proof.storage.exists(user.registration_proof.name):
-                user.registration_proof.storage.delete(user.registration_proof.name)
-            user.registration_proof = None
-            user.save()
-        except Exception as e:
-            logger.warning(f"Error deleting proof file: {str(e)}")
 
 
 @require_http_methods(['POST'])

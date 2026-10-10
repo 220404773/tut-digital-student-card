@@ -2,6 +2,8 @@
 the client IP has to come from a header the proxy sets - and only the part of
 it the proxy wrote, since clients can send the same headers themselves.
 """
+from unittest.mock import patch
+
 from django.core.cache import cache
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -98,6 +100,54 @@ class LoginProtectionTests(TestCase):
             self._login('220404773@tut4life.ac.za', f'192.0.2.{number}')
         self.assertContains(self._login('220404773@tut4life.ac.za', STUDENT, password='StrongPass123!'),
                             'Too many failed login attempts')
+
+    def test_the_account_pause_is_not_restarted_by_further_failures(self):
+        """Round-2 finding: each failure after the cap restarted the 15-minute
+        pause, so one attempt every 15 minutes kept a student locked out."""
+        from datetime import timedelta
+        from django.utils import timezone
+        from accounts import login_guard
+
+        email = '220404773@tut4life.ac.za'
+        for number in range(50):
+            login_guard.record_failed_login(email, f'192.0.2.{number}')
+        first_pause = login_guard.login_wait_seconds(email, STUDENT)
+        later = timezone.now() + timedelta(minutes=10)
+        with patch('accounts.login_guard.timezone.now', return_value=later):
+            login_guard.record_failed_login(email, '192.0.2.200')
+            # 10 minutes in, the original pause has about 5 minutes left; a
+            # restart would have put it back to 15.
+            self.assertLessEqual(login_guard.login_wait_seconds(email, STUDENT), first_pause - 590)
+
+    def test_no_second_pause_within_60_minutes_even_across_a_clock_hour(self):
+        """Round-3 finding: a pause at 00:59:59 and a fresh hour's window let a
+        second pause start at 01:15 - 30 minutes locked out instead of 15."""
+        from datetime import datetime, timedelta, timezone as dt_timezone
+        from accounts import login_guard
+
+        email = '220404773@tut4life.ac.za'
+        start = datetime(2026, 10, 10, 0, 59, 59, tzinfo=dt_timezone.utc)
+
+        def fifty_failures_at(moment):
+            with patch('django.utils.timezone.now', return_value=moment):
+                for number in range(50):
+                    login_guard.record_failed_login(email, f'192.0.2.{number}')
+                return login_guard.login_wait_seconds(email, STUDENT)
+
+        self.assertGreater(fifty_failures_at(start), 890)
+        # 15 minutes later, a new clock hour: the first pause has ended and a
+        # full new hour's worth of failures must not start another.
+        self.assertEqual(fifty_failures_at(start + timedelta(minutes=15, seconds=1)), 0)
+        # 61 minutes after the first pause started, a new one may begin.
+        self.assertGreater(fifty_failures_at(start + timedelta(minutes=61)), 890)
+
+    def test_failed_login_counts_live_in_the_shared_database_cache(self):
+        """Round-2 finding: the per-process cache held only 300 entries, so a
+        flood of junk logins evicted the real counters."""
+        from django.conf import settings
+        cache_settings = settings.CACHES['default']
+        self.assertEqual(cache_settings['BACKEND'], 'django.core.cache.backends.db.DatabaseCache')
+        self.assertGreaterEqual(cache_settings['OPTIONS']['MAX_ENTRIES'], 100_000)
 
     def test_a_successful_login_clears_that_networks_count(self):
         for _ in range(4):

@@ -5,6 +5,7 @@ from collections import Counter
 from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.models import Group
+from django.db import transaction
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
@@ -12,7 +13,7 @@ from django.utils import timezone
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_unique_card_number, issue_card_if_allowed
 from .models import User, DeletedStudentLog, ReviewRequest
-from .views import delete_registration_proof
+from .services import delete_registration_proof
 
 logger = logging.getLogger(__name__)
 
@@ -199,22 +200,37 @@ class StudentUserAdmin(UserAdmin):
         # OCR auto-verification path in signup(), so the card follows the same
         # rule: issued now, or once the student confirms their email.
         if obj.is_verified and not obj.is_staff:
-            # A staff member has just decided, so nothing is left in the
-            # review queue for this student.
-            closed = ReviewRequest.objects.filter(user=obj, status='pending').update(
-                status='approved', resolved_at=timezone.now(), resolved_by=request.user,
-                staff_note='Closed: verified by a staff member in the admin.',
-            )
+            try:
+                # Closing the review and issuing the card succeed or fail
+                # together - the same all-or-nothing rule as a staff approval
+                # on the Review Requests page.
+                with transaction.atomic():
+                    # A staff member has just decided, so nothing is left in
+                    # the review queue for this student.
+                    closed = ReviewRequest.objects.filter(user=obj, status='pending').update(
+                        status='approved', resolved_at=timezone.now(), resolved_by=request.user,
+                        staff_note='Closed: verified by a staff member in the admin.',
+                    )
+                    outcome = issue_card_if_allowed(obj, request)
+            except Exception:
+                logger.exception("Card generation failed while verifying student %s in the admin", obj.pk)
+                # Don't leave them verified without a card and with their
+                # review silently closed: undo the verification too.
+                User.objects.filter(pk=obj.pk).update(is_verified=False)
+                obj.is_verified = False
+                self.message_user(
+                    request,
+                    'The card could not be generated, so the student was left unverified and any review '
+                    'request stays open. Please try again.',
+                    level=messages.ERROR,
+                )
+                return
             if closed:
                 self.message_user(request, 'Their pending review request was closed.')
-            try:
-                outcome = issue_card_if_allowed(obj, request)
-                if outcome == 'issued':
-                    self.message_user(request, 'Digital student card generated for this student.')
-                elif outcome == 'awaiting_email':
-                    self.message_user(request, 'Student verified - their card will be issued once they confirm their email.')
-            except Exception as e:
-                self.message_user(request, f'Error generating card: {str(e)}', level=messages.ERROR)
+            if outcome == 'issued':
+                self.message_user(request, 'Digital student card generated for this student.')
+            elif outcome == 'awaiting_email':
+                self.message_user(request, 'Student verified - their card will be issued once they confirm their email.')
 
 
 admin.site.register(User, StudentUserAdmin)

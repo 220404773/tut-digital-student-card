@@ -9,7 +9,7 @@ from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
-from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponse, HttpResponseNotAllowed
 from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from django.utils.crypto import get_random_string

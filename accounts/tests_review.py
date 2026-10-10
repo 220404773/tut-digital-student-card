@@ -267,6 +267,27 @@ class StaffDecisionTests(TestCase):
         self.assertEqual((self.review.status, self.review.resolved_by), ('approved', self.staff))
         self.assertEqual(self.client.get(reverse('report_review_requests')).context['pending'].count(), 0)
 
+    def test_admin_verified_tick_undoes_itself_if_the_card_fails(self):
+        """The same all-or-nothing rule as a staff approval: a card failure
+        must not leave the student verified with their review closed."""
+        from django.contrib.admin.sites import site
+        from django.test import RequestFactory
+
+        self.student.is_verified = True
+        self.student.save()
+        request = RequestFactory().post('/admin/')
+        request.user = self.staff
+        model_admin = site._registry[User]
+        with patch.object(model_admin, 'message_user') as message_user, \
+                patch('cards.utils.generate_student_card', side_effect=RuntimeError('storage down')):
+            model_admin.save_model(request, self.student, form=None, change=True)
+
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.status, 'pending')
+        self.assertFalse(User.objects.get(pk=self.student.pk).is_verified)
+        self.assertFalse(StudentCard.objects.filter(user=self.student).exists())
+        self.assertIn('left unverified', message_user.call_args.args[1])
+
 
 class OnePendingReviewTests(TestCase):
     def setUp(self):

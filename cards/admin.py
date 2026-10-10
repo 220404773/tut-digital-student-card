@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.contrib import admin
+from django.utils import timezone
 from .models import StudentCard
 from .utils import generate_unique_card_number
 
@@ -29,6 +30,6 @@ class StudentCardAdmin(admin.ModelAdmin):
         if not obj.card_number:
             obj.card_number = generate_unique_card_number(obj.user)
         if not obj.expiry_date:
-            obj.expiry_date = obj.user.registration_end_date or (datetime.now().date() + timedelta(days=365))
+            obj.expiry_date = obj.user.registration_end_date or (timezone.now().date() + timedelta(days=365))
 
         super().save_model(request, obj, form, change)

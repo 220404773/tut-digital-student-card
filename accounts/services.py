@@ -5,6 +5,7 @@ evaluate_ocr command imported another app's views module. Keeping them here,
 with no imports from the cards app, means views only ever depend on models
 and services, never on each other.
 """
+import logging
 import re
 from datetime import timedelta
 
@@ -18,6 +19,8 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
 from .tokens import email_confirmation_token
+
+logger = logging.getLogger(__name__)
 
 
 def normalise_student_number(value):
@@ -101,3 +104,22 @@ def send_confirmation_email(user, request):
         recipient_list=[user.email],
     )
     start_confirmation_cooldown(user)
+
+
+def delete_registration_proof(user):
+    """Delete the uploaded proof of registration after processing (POPIA
+    compliance) - goes through the storage backend's own API (not raw
+    os.path/MEDIA_ROOT) so this also works when storage is S3/Spaces-backed,
+    not just local disk. Must be called from every code path that saves a
+    user with a registration_proof attached, not just the final one - a
+    save() partway through signup() already uploads the file, so an early
+    return without this call leaves it sitting in storage indefinitely.
+    """
+    if user.registration_proof:
+        try:
+            if user.registration_proof.storage.exists(user.registration_proof.name):
+                user.registration_proof.storage.delete(user.registration_proof.name)
+            user.registration_proof = None
+            user.save()
+        except Exception as e:
+            logger.warning("Error deleting proof file for user %s: %s", user.pk, e)

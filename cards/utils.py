@@ -61,11 +61,28 @@ def configure_tesseract():
 LLM_TOTAL_BUDGET_SECONDS = 20
 
 
+def _budget_clock():
+    """Seconds on a clock that only moves forward - its own function so tests
+    can simulate a slow provider without patching Python's time module."""
+    return time.monotonic()
+
+
 class ProviderUnavailable(Exception):
     """The provider couldn't be reached or was temporarily failing (network
     error, timeout, rate limit, server error). Only this lets the next
     provider be tried: if a provider *answered* - even with an error, a
     refusal or a malformed reply - the document is not sent anywhere else."""
+
+
+def _error_code_suffix(http_error):
+    """' (code)' from an OpenAI-style error body, or '' if it has none."""
+    try:
+        error = json.loads(http_error.read().decode('utf-8', 'replace')).get('error')
+        code = error.get('code') if isinstance(error, dict) else None
+    except (ValueError, AttributeError):
+        return ''
+    # A code is a short identifier; anything else isn't trusted into the log.
+    return f' ({code})' if isinstance(code, str) and re.fullmatch(r'[A-Za-z0-9_.\-]{1,64}', code) else ''
 
 
 class ChatCompletionsClient:
@@ -94,8 +111,10 @@ class ChatCompletionsClient:
                 raw = response.read().decode('utf-8')
         except HTTPError as e:
             # The status line alone ("400 Bad Request") doesn't say what the
-            # provider objected to - the response body does.
-            detail = f'{self.name} returned {e.code}: {e.read().decode("utf-8", "replace")[:500]}'
+            # provider objected to, so add its short error code (for example
+            # content_filter, unsupported_parameter) - but never its message,
+            # which can quote the prompt and so the student's document.
+            detail = f'{self.name} returned HTTP {e.code}{_error_code_suffix(e)}'
             if e.code in (408, 429) or e.code >= 500:
                 raise ProviderUnavailable(detail) from e
             # 400/401/403/404: a refusal or wrong configuration. Retrying the
@@ -173,17 +192,34 @@ def get_llm_clients():
     return clients
 
 
-# South African ID numbers are 13 digits, often printed in groups with spaces,
-# dashes or dots (8001 015009 087, 800101-5009-087), and OCR misreads 0 as O
-# and 1 as I or l. A candidate is 13 such characters with at most one
-# separator between each, standing alone, and mostly real digits - so words
-# made of those letters are never touched.
-_ID_CHAR = '0-9OoIl|'
+# South African ID numbers are 13 digits, often printed in groups (8001 015009
+# 087, 800101-5009-087), and OCR misreads 0 as O, 1 as I or l, 5 as S, 8 as B
+# and 2 as Z. A candidate stands alone, is mostly real digits (so words made
+# of those letters are never touched), and is one of:
+#   - 13 characters run together, or with one space, dot or dash between
+#     every pair (8 0 0 1 0 1 ...);
+#   - one of the ID's printed layouts (6-4-3, 4-6-3 or 6-7 digits), with up
+#     to two separators - spaces, line breaks, dots, commas, slashes or dashes
+#     - between groups.
+# Separators are only accepted in those shapes, so other numbers that happen
+# to add up to 13 digits - a 9-digit student number then a year, on the same
+# line or the next - are never mistaken for an ID.
+_ID_CHAR = '0-9OoIl|SsBZ'
+_C = f'[{_ID_CHAR}]'
+_GROUP_SEP = r'[ \t\r\n.,/\-]{1,2}'
 _ID_CANDIDATE = re.compile(
-    rf'(?<![0-9A-Za-z])(?:[{_ID_CHAR}][ .\-]?){{12}}[{_ID_CHAR}](?![0-9A-Za-z])'
+    rf'(?<![0-9A-Za-z])(?:'
+    rf'{_C}{{13}}'
+    rf'|{_C}(?:[ .\-]{_C}){{12}}'
+    rf'|{_C}{{6}}{_GROUP_SEP}{_C}{{4}}{_GROUP_SEP}{_C}{{3}}'
+    rf'|{_C}{{4}}{_GROUP_SEP}{_C}{{6}}{_GROUP_SEP}{_C}{{3}}'
+    rf'|{_C}{{6}}{_GROUP_SEP}{_C}{{7}}'
+    rf')(?![0-9A-Za-z])'
 )
+# After an "ID Number" label (the word ID on its own - not the "id" inside
+# "Valid"), an older 10-13 digit ID number written as one run.
 _LABELLED_ID_NUMBER = re.compile(
-    rf'(ID\s*(?:Number|No\.?)?\s*[:#\-]?\s*)[{_ID_CHAR}][{_ID_CHAR} .\-]{{8,20}}[{_ID_CHAR}]', re.IGNORECASE
+    r'(?<![A-Za-z])(ID\s*(?:Number|No\.?)?\s*[:#\-]?\s*)[0-9OoIl|]{10,13}(?![0-9A-Za-z])', re.IGNORECASE
 )
 _RAW_13_DIGITS = re.compile(r'(?<!\d)\d{13}(?!\d)')
 
@@ -194,7 +230,9 @@ class IdentityNumberNotRemoved(Exception):
 
 
 def _mostly_digits(candidate):
-    return sum(ch.isdigit() for ch in candidate) >= 10
+    # More than half of the 13 must be real digits: that still catches heavy
+    # OCR substitution, while words made of look-alike letters never qualify.
+    return sum(ch.isdigit() for ch in candidate) >= 7
 
 
 def redact_id_numbers(text):
@@ -222,11 +260,14 @@ def redact_id_numbers(text):
 _INSTRUCTION_PATTERNS = re.compile(
     r'\b(?:ignore|disregard|forget|override)\b[^.\n]{0,40}\b(?:instruction|previous|prior|above|earlier|rules?)'
     r'|\byou\s+are\s+(?:now\s+)?(?:an?\s+)?(?:ai|assistant|model|language\s+model|chatbot)\b'
-    r'|\b(?:system|assistant|developer)\s*(?:prompt|message|:)'
+    # Chat role labels only where a line starts with them ("System: ..."),
+    # so ordinary labels like "Student Information System:" don't match.
+    r'|^[ \t]*(?:system|assistant|developer)[ \t]*:'
+    r'|\b(?:system|developer)\s+(?:prompt|message)\b'
     r'|is_tut_proof_of_registration|classification_confidence|classification_reason'
     r'|\b(?:respond|reply|answer|output)\s+(?:only\s+)?(?:with|in)\s+json\b'
     r'|\b(?:set|give|rate|score)\s+(?:the\s+|a\s+)?confidence\b',
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
 
 
@@ -716,9 +757,9 @@ def extract_with_llm(raw_text):
     # ET-02: one 20-second budget for the whole AI step. Azure fails either
     # instantly (connection or HTTP error) or by timing out at its own cap; the
     # fallback gets whatever time is left rather than a fixed slice.
-    deadline = time.monotonic() + LLM_TOTAL_BUDGET_SECONDS
+    deadline = _budget_clock() + LLM_TOTAL_BUDGET_SECONDS
     for client in clients:
-        remaining = deadline - time.monotonic()
+        remaining = deadline - _budget_clock()
         if remaining < 2:
             logger.warning("LLM extraction skipped %s: out of time", client.name)
             break
@@ -735,8 +776,10 @@ def extract_with_llm(raw_text):
             logger.warning("LLM extraction failed on %s, not falling back: %s", client.name, e)
             return None
         try:
+            # content can be None (a reasoning model that ran out of tokens
+            # answers with no text), which json.loads rejects with TypeError.
             result = normalize_llm_output(json.loads(response.content))
-        except (ValueError, AttributeError) as e:
+        except (ValueError, AttributeError, TypeError) as e:
             logger.warning("LLM extraction: %s answered with unusable JSON, not falling back: %s", client.name, e)
             return None
         logger.info("LLM extraction answered by %s", client.name)
@@ -995,7 +1038,7 @@ def generate_student_card(user, request=None):
 
     # Card expiry follows the student's registration period when the proof of
     # registration gave us one; otherwise default to 1 year.
-    expiry_date = user.registration_end_date or (datetime.now().date() + timedelta(days=365))
+    expiry_date = user.registration_end_date or (timezone.now().date() + timedelta(days=365))
     try:
         # A savepoint, so a lost race below doesn't break the caller's transaction.
         with transaction.atomic():
