@@ -16,7 +16,10 @@ CONFIGURED = dict(
     AZURE_OPENAI_DEPLOYMENT='gpt-5-nano',
     AZURE_OPENAI_API_VERSION='2025-04-01-preview',
     AZURE_OPENAI_REASONING_EFFORT='minimal',
+    # Pinned so these tests don't depend on the keys in the developer's .env.
+    NVIDIA_API_KEY='',
 )
+WITH_FALLBACK = dict(CONFIGURED, NVIDIA_API_KEY='nvapi-test', NVIDIA_MODEL='nvidia/test-model')
 
 DOCUMENT_TEXT = (
     'TSHWANE UNIVERSITY OF TECHNOLOGY\n'
@@ -109,3 +112,85 @@ class ExtractWithAzureTests(SimpleTestCase):
         """ET-02: a model that doesn't answer in time must not block registration."""
         with patch('urllib.request.urlopen', side_effect=URLError('timed out')):
             self.assertIsNone(extract_with_llm(DOCUMENT_TEXT))
+
+
+def nvidia_reply(content):
+    return io.BytesIO(json.dumps({'choices': [{'message': {'role': 'assistant', 'content': content}}]}).encode())
+
+
+@override_settings(**WITH_FALLBACK)
+class NvidiaFallbackTests(SimpleTestCase):
+    """NVIDIA has no data processing agreement with us, so it is only ever
+    asked when Azure has already failed."""
+
+    ANSWER = json.dumps({'is_tut_proof_of_registration': True, 'student_number': '220404773'})
+
+    def _requests_by_host(self, urlopen):
+        return [call.args[0] for call in urlopen.call_args_list]
+
+    def test_nvidia_is_not_called_while_azure_answers(self):
+        with patch('urllib.request.urlopen', return_value=azure_reply(self.ANSWER)) as urlopen:
+            extract_with_llm(DOCUMENT_TEXT)
+        hosts = [r.host for r in self._requests_by_host(urlopen)]
+        self.assertEqual(hosts, ['example-resource.openai.azure.com'])
+
+    def test_nvidia_answers_when_azure_fails(self):
+        def respond(request, timeout):
+            if 'azure' in request.host:
+                raise URLError('Azure unreachable')
+            return nvidia_reply(self.ANSWER)
+
+        with patch('urllib.request.urlopen', side_effect=respond) as urlopen:
+            result = extract_with_llm(DOCUMENT_TEXT)
+
+        self.assertEqual(result['student_number'], '220404773')
+        nvidia_request = self._requests_by_host(urlopen)[1]
+        self.assertEqual(nvidia_request.host, 'integrate.api.nvidia.com')
+        self.assertEqual(json.loads(nvidia_request.data)['model'], 'nvidia/test-model')
+
+    def test_the_id_number_is_removed_before_nvidia_too(self):
+        def respond(request, timeout):
+            if 'azure' in request.host:
+                raise URLError('Azure unreachable')
+            return nvidia_reply(self.ANSWER)
+
+        with patch('urllib.request.urlopen', side_effect=respond) as urlopen:
+            extract_with_llm(DOCUMENT_TEXT)
+        prompt = json.loads(self._requests_by_host(urlopen)[1].data)['messages'][0]['content']
+        self.assertNotIn('0001015800085', prompt)
+
+    def test_both_failing_falls_back_to_rule_based_extraction(self):
+        with patch('urllib.request.urlopen', side_effect=URLError('down')):
+            self.assertIsNone(extract_with_llm(DOCUMENT_TEXT))
+
+    def test_a_hanging_azure_still_leaves_the_fallback_inside_20_seconds(self):
+        """ET-02: Azure is capped at 12 seconds; if it hangs that long,
+        NVIDIA gets only what's left of the 20, not a fresh 20."""
+        clock = [1000.0]
+        timeouts = []
+
+        def respond(request, timeout):
+            timeouts.append(timeout)
+            if 'azure' in request.host:
+                clock[0] += timeout  # Azure hangs until its own timeout
+                raise URLError('timed out')
+            return nvidia_reply(self.ANSWER)
+
+        with patch('cards.utils.time.monotonic', side_effect=lambda: clock[0]), \
+                patch('urllib.request.urlopen', side_effect=respond):
+            extract_with_llm(DOCUMENT_TEXT)
+        self.assertEqual(timeouts[0], 12)
+        self.assertAlmostEqual(timeouts[1], 8)
+
+    def test_an_instantly_failing_azure_gives_the_fallback_the_full_budget(self):
+        timeouts = []
+
+        def respond(request, timeout):
+            timeouts.append(timeout)
+            if 'azure' in request.host:
+                raise URLError('connection refused')
+            return nvidia_reply(self.ANSWER)
+
+        with patch('urllib.request.urlopen', side_effect=respond):
+            extract_with_llm(DOCUMENT_TEXT)
+        self.assertGreater(timeouts[1], 19)

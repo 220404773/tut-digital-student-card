@@ -17,7 +17,7 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.db import models
-from .models import User
+from .models import ReviewRequest, User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
@@ -43,6 +43,32 @@ def _normalise_student_number(value):
     both introduce stray spaces, dashes and case differences that don't
     change which student the number identifies."""
     return re.sub(r'[^0-9A-Za-z]', '', value or '').upper()
+
+
+def _posted_email_key(group, request):
+    """Rate-limit key for login: the account being tried, not the network.
+    A whole campus shares one public IP address, so an IP-only limit locked
+    out the 11th student logging in that minute; a per-account limit still
+    stops password guessing against any one student."""
+    return (request.POST.get('email') or '').strip().lower()
+
+
+# Backends that don't deliver mail anywhere - used to avoid telling a student
+# "check your inbox" when nothing was actually sent.
+_NON_DELIVERING_EMAIL_BACKENDS = (
+    'django.core.mail.backends.console.EmailBackend',
+    'django.core.mail.backends.dummy.EmailBackend',
+)
+
+
+def email_is_delivered():
+    return settings.EMAIL_BACKEND not in _NON_DELIVERING_EMAIL_BACKENDS
+
+
+EMAIL_NOT_CONFIGURED_MESSAGE = (
+    "Email delivery isn't set up on this server, so no confirmation email was sent. "
+    "The confirmation link was written to the server log instead."
+)
 
 # Minimum wait between confirmation emails to the same account - matches the
 # ~60s resend cooldown most mail-sending flows use (GitHub, Google account
@@ -129,7 +155,10 @@ def split_full_name(full_name):
 
 
 @require_http_methods(['POST'])
-@ratelimit(key='ip', rate='20/h', method='POST', block=False)
+# Per-IP ceilings are set for a campus, where many students share one public
+# IP address: generous enough for a class registering together, still low
+# enough to stop one machine hammering the OCR and AI pipeline.
+@ratelimit(key='ip', rate='120/h', method='POST', block=False)
 def preview_registration_proof(request):
     """Return OCR data for a registration proof without creating an account."""
     if getattr(request, 'limited', False):
@@ -206,7 +235,7 @@ def preview_registration_proof(request):
 
 
 @require_http_methods(['GET', 'POST'])
-@ratelimit(key='ip', rate='10/h', method='POST', block=False)
+@ratelimit(key='ip', rate='60/h', method='POST', block=False)
 def signup(request):
     """
     Handle user registration and proof of registration upload.
@@ -261,7 +290,10 @@ def signup(request):
             ocr_start_time = None
             ocr_duration = 0
             student_number_mismatch = False
-            
+            # Set when the account should go to a staff member rather than be
+            # decided by the automated check alone (POPIA s71) - see ReviewRequest.
+            review_reason = None
+
             # Process the uploaded registration proof with OCR
             if 'registration_proof' in request.FILES:
                 registration_proof = request.FILES['registration_proof']
@@ -298,10 +330,25 @@ def signup(request):
 
                     if isinstance(ocr_result, dict) and ocr_result.get('error') == 'invalid_pdf':
                         user.is_verified = False
-                        messages.warning(request, 'This does not look like a valid TUT proof of registration. Please upload the correct document.')
-                        return render(request, 'accounts/signup.html', {'form': form})
-                    
-                    if ocr_result and ocr_result.get('confidence_score', 0) >= 0.8:
+                        if not form.cleaned_data.get('request_review'):
+                            # By default a rejected document creates no account
+                            # (FR-03) - but the student can disagree with the
+                            # automated decision and ask a person instead.
+                            messages.warning(
+                                request,
+                                'This does not look like a valid TUT proof of registration. Please upload the correct document. '
+                                "If you're sure it is your proof of registration, tick \"Ask a staff member to verify "
+                                'my registration" below and submit again.'
+                            )
+                            return render(request, 'accounts/signup.html', {'form': form, 'offer_review': True})
+                        review_reason = 'document_rejected'
+                        messages.info(
+                            request,
+                            'Your account has been created without automatic verification. '
+                            'A staff member will check your registration with the university.'
+                        )
+
+                    elif ocr_result and ocr_result.get('confidence_score', 0) >= 0.8:
                         if not ocr_result.get('student_number') and not ocr_result.get('full_name'):
                             user.is_verified = False
                             messages.warning(request, 'The uploaded file did not contain the required details.')
@@ -356,6 +403,7 @@ def signup(request):
                         extracted_number = _normalise_student_number(ocr_result.get('student_number'))
                         if extracted_number != _normalise_student_number(user.student_number):
                             student_number_mismatch = True
+                            review_reason = 'number_mismatch'
                             user.is_verified = False
                             if extracted_number:
                                 messages.warning(
@@ -386,7 +434,21 @@ def signup(request):
                             messages.success(request, 'TUT Proof of Registration verified successfully!')
                     else:
                         user.is_verified = False
-                        messages.warning(request, 'OCR verification partially matched. Admin review required.')
+                        if ocr_result and ocr_result.get('confidence_score', 0) >= 0.75:
+                            # Close enough that a person should look rather
+                            # than the student being told to start over.
+                            review_reason = 'low_confidence'
+                            messages.warning(
+                                request,
+                                'Your document could not be verified with enough confidence. '
+                                'Your account has been created and sent to a staff member for review.'
+                            )
+                        else:
+                            messages.warning(
+                                request,
+                                'Your document could not be verified automatically. From your dashboard you can '
+                                'upload a clearer copy, or ask a staff member to review your registration.'
+                            )
                 except Exception as e:
                     user.is_verified = False
                     messages.warning(request, f'OCR processing error: {str(e)}. Please try again.')
@@ -394,6 +456,8 @@ def signup(request):
             _t_save = timezone.now()
             user.save()
             print(f"user.save() took {(timezone.now() - _t_save).total_seconds():.2f}s")
+            if review_reason:
+                ReviewRequest.open_for(user, review_reason)
             _t_delete = timezone.now()
             delete_registration_proof(user)
             print(f"delete_registration_proof() took {(timezone.now() - _t_delete).total_seconds():.2f}s")
@@ -479,10 +543,18 @@ def signup(request):
                 email_send_start = timezone.now()
                 send_confirmation_email(user, request)
                 email_send_duration = (timezone.now() - email_send_start).total_seconds()
-                print(f"Confirmation email accepted by mail server for {user.email} (took {email_send_duration:.2f}s)")
-                messages.info(request, 'Please check your email to confirm your address.')
+                print(f"Confirmation email handed to {settings.EMAIL_BACKEND} for {user.email} (took {email_send_duration:.2f}s)")
+                if email_is_delivered():
+                    messages.info(request, 'Please check your email to confirm your address.')
+                else:
+                    messages.warning(request, EMAIL_NOT_CONFIGURED_MESSAGE)
             except Exception as e:
                 print(f"Error sending confirmation email to {user.email}: {str(e)}")
+                messages.warning(
+                    request,
+                    "Your account was created, but we couldn't send your confirmation email. "
+                    "Use 'Resend' on your dashboard to try again."
+                )
 
             return redirect('dashboard')
         else:
@@ -609,14 +681,41 @@ def resend_confirmation_email(request):
             else:
                 try:
                     send_confirmation_email(request.user, request)
-                    print(f"Confirmation email accepted by mail server for {request.user.email}")
-                    messages.success(request, 'Confirmation email sent - please check your inbox.')
+                    print(f"Confirmation email handed to {settings.EMAIL_BACKEND} for {request.user.email}")
+                    if email_is_delivered():
+                        messages.success(request, 'Confirmation email sent - please check your inbox.')
+                    else:
+                        messages.warning(request, EMAIL_NOT_CONFIGURED_MESSAGE)
                 except Exception as e:
                     print(f"Error sending confirmation email to {request.user.email}: {str(e)}")
                     messages.error(request, 'Could not send the confirmation email right now. Please try again later.')
     elif getattr(request, 'limited', False):
         messages.error(request, 'Too many resend attempts - please wait a while and try again.')
     return redirect(request.META.get('HTTP_REFERER') or 'dashboard')
+
+
+@login_required(login_url='login')
+@require_http_methods(['POST'])
+@ratelimit(key='user', rate='5/h', method='POST', block=False)
+def request_review(request):
+    """Lets a student whose registration wasn't verified automatically ask a
+    staff member to check it instead (POPIA s71 - the automated decision
+    isn't final)."""
+    if request.user.is_staff:
+        return redirect('performance_dashboard')
+    if getattr(request, 'limited', False):
+        messages.error(request, 'Too many requests - please wait a while and try again.')
+    elif request.user.is_verified:
+        messages.info(request, 'Your registration is already verified.')
+    else:
+        ReviewRequest.open_for(
+            request.user, 'student_request', message=request.POST.get('message', '').strip()[:1000],
+        )
+        messages.success(
+            request,
+            'Your request has been sent. A staff member will check your registration with the university.'
+        )
+    return redirect('dashboard')
 
 
 @login_required(login_url='login')
@@ -719,6 +818,11 @@ def reupload_proof(request):
     user.registration_end_date = registration_end_date
     user.is_verified = True
     user.save()
+    # Their own document now verifies them, so nothing is left for staff to decide.
+    ReviewRequest.objects.filter(user=user, status='pending').update(
+        status='approved', resolved_at=timezone.now(),
+        staff_note='Closed automatically: the student uploaded a document that verified.',
+    )
 
     student_card = existing_card
     if student_card:
@@ -743,7 +847,8 @@ def reupload_proof(request):
 
 
 @require_http_methods(['GET', 'POST'])
-@ratelimit(key='ip', rate='10/m', method='POST', block=False)
+@ratelimit(key=_posted_email_key, rate='10/m', method='POST', block=False)
+@ratelimit(key='ip', rate='100/m', method='POST', block=False)
 def login_view(request):
     """
     Handle user login. Errors are attached to the specific field (email vs
@@ -756,7 +861,7 @@ def login_view(request):
     form = LoginForm(request.POST or None, initial={'email': request.GET.get('email', '')})
 
     if request.method == 'POST' and getattr(request, 'limited', False):
-        messages.error(request, 'Too many login attempts from your network. Please wait a minute and try again.')
+        messages.error(request, 'Too many login attempts. Please wait a minute and try again.')
         return render(request, 'accounts/login.html', {'form': form})
 
     if request.method == 'POST' and form.is_valid():

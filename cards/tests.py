@@ -165,6 +165,9 @@ class AdminVerificationCardGenerationTests(TestCase):
         MessageMiddleware(lambda r: None).process_request(self.request)
 
     def test_checking_is_verified_generates_card(self):
+        # Card issue waits for email confirmation on every path, the admin
+        # tick included - see StaffDecisionTests in accounts/tests_review.py.
+        self.student.email_confirmed = True
         self.student.is_verified = True
         self.model_admin.save_model(self.request, self.student, form=None, change=True)
         self.assertTrue(StudentCard.objects.filter(user=self.student).exists())
@@ -179,7 +182,7 @@ class AdminVerificationCardGenerationTests(TestCase):
         new_student = User(
             email='newlyadded@tut4life.ac.za', student_number='777666555',
             first_name='New', last_name='Student', username='newlyadded@tut4life.ac.za',
-            is_verified=True,
+            is_verified=True, email_confirmed=True,
         )
         new_student.set_password('TestPass123!')
         self.model_admin.save_model(self.request, new_student, form=None, change=False)
@@ -244,8 +247,8 @@ class StaffAdminPlaceholderStudentNumberTests(TestCase):
 
 class StudentCardAdminTests(TestCase):
     """Manually adding a StudentCard directly in admin should auto-generate
-    a unique card_number and QR code, the same way issue_date auto-
-    populates - these aren't meant to be typed in by hand."""
+    a unique card_number, the same way issue_date auto-populates - it isn't
+    meant to be typed in by hand. The QR code is drawn from it on demand."""
 
     def setUp(self):
         from django.contrib.admin.sites import AdminSite
@@ -260,12 +263,14 @@ class StudentCardAdminTests(TestCase):
         self.request.user = self.staff
 
     def test_manually_added_card_gets_number_and_qr_code(self):
+        from cards.utils import render_card_qr_png
+
         card = StudentCard(user=self.student)
         self.model_admin.save_model(self.request, card, form=None, change=False)
 
         card.refresh_from_db()
         self.assertTrue(card.card_number)
-        self.assertTrue(card.qr_code)
+        self.assertTrue(render_card_qr_png(card.card_number, self.request).startswith(b'\x89PNG'))
 
     def test_manually_provided_expiry_date_is_not_overridden(self):
         custom_expiry = date(2099, 1, 1)

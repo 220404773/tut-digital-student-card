@@ -5,19 +5,22 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.admin.views.decorators import staff_member_required
+from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
-from django.http import FileResponse, HttpResponse, HttpResponseNotAllowed, JsonResponse
+from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
-from accounts.models import User, DeletedStudentLog
+from accounts.models import User, DeletedStudentLog, ReviewRequest
 from accounts.views import split_full_name, send_confirmation_email
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
-from .utils import get_card_display_data, build_card_verification_url, generate_student_card
+from .utils import (
+    get_card_display_data, build_card_verification_url, generate_student_card,
+    issue_card_if_allowed, render_card_qr_png,
+)
 from .google_wallet import build_google_wallet_save_url
 from tut_student_card.client_ip import get_client_ip
-import qrcode
 
 
 def student_required(view_func):
@@ -57,6 +60,9 @@ def dashboard(request):
         'card_data': get_card_display_data(student_card) if student_card else None,
         'confirmation_cooldown_remaining': confirmation_cooldown_remaining(user) if not user.email_confirmed else 0,
         'google_wallet_save_url': google_wallet_save_url,
+        # Most recent human-review request, so an unverified student sees
+        # where their registration stands instead of a generic "pending".
+        'latest_review': None if user.is_verified else ReviewRequest.objects.filter(user=user).first(),
     }
     return render(request, 'cards/dashboard.html', context)
 
@@ -91,44 +97,31 @@ def view_card(request):
 
 
 @student_required
+def card_qr_image(request):
+    """The signed-in student's own QR code, drawn on request (shown on the
+    dashboard). Only ever their own card - there is no card number in the URL."""
+    student_card = get_object_or_404(StudentCard, user=request.user)
+    response = HttpResponse(render_card_qr_png(student_card.card_number, request), content_type='image/png')
+    # Private: it identifies the student's card, so shared caches must not keep it.
+    response['Cache-Control'] = 'private, max-age=300'
+    return response
+
+
+@student_required
 def download_qr_code(request, format_type='png'):
-    """
-    Download QR code in PNG or PDF format.
-    """
-    user = request.user
-    student_card = get_object_or_404(StudentCard, user=user)
-    
-    # Log activity
+    """Download the student's QR code as a PNG file."""
+    student_card = get_object_or_404(StudentCard, user=request.user)
+
     CardActivity.objects.create(
         student_card=student_card,
         activity_type='downloaded',
         ip_address=get_client_ip(request),
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
-    
-    if student_card.qr_code:
-        # Read through the FieldFile itself (which goes via the storage
-        # backend's open()) rather than .path - S3Boto3Storage doesn't
-        # support .path at all, only local FileSystemStorage does.
-        return FileResponse(
-            student_card.qr_code.open('rb'),
-            content_type='image/png',
-            as_attachment=True,
-            filename=f"student_card_qr_{student_card.card_number}.png"
-        )
-    else:
-        # Generate QR code on the fly
-        qr_data = build_card_verification_url(student_card.card_number, request)
-        qr = qrcode.QRCode(version=1, box_size=10, border=4)
-        qr.add_data(qr_data)
-        qr.make(fit=True)
-        
-        qr_image = qr.make_image(fill_color="black", back_color="white")
-        
-        response = HttpResponse(content_type='image/png')
-        response['Content-Disposition'] = f'attachment; filename="student_card_qr_{student_card.card_number}.png"'
-        qr_image.save(response, 'PNG')
-        return response
+
+    response = HttpResponse(render_card_qr_png(student_card.card_number, request), content_type='image/png')
+    response['Content-Disposition'] = f'attachment; filename="student_card_qr_{student_card.card_number}.png"'
+    return response
 
 
 @ratelimit(key='ip', rate='60/m', method='GET', block=False)
@@ -253,6 +246,7 @@ def performance_dashboard(request):
         'expired_cards_count': StudentCard.objects.filter(
             Q(status='expired') | Q(status='active', expiry_date__lt=today)
         ).count(),
+        'pending_reviews_count': ReviewRequest.objects.filter(status='pending').count(),
     }
 
     # Site traffic
@@ -482,6 +476,67 @@ def report_expired_cards(request):
     return render(request, 'cards/report_expired_cards.html', {
         'expired_cards': expired_cards,
     })
+
+
+@staff_member_required(login_url='login')
+def report_review_requests(request):
+    """Students the automated check didn't verify, waiting for a person to
+    decide (POPIA s71). Pending requests first, then recent decisions."""
+    pending = ReviewRequest.objects.filter(status='pending').select_related('user').order_by('created_at')
+    resolved = ReviewRequest.objects.exclude(status='pending').select_related('user', 'resolved_by')[:50]
+    return render(request, 'cards/report_review_requests.html', {
+        'pending': pending,
+        'resolved': resolved,
+        'today': timezone.now().date(),
+    })
+
+
+@staff_member_required(login_url='login')
+@require_POST
+def resolve_review_request(request, review_id):
+    """Approve or decline a review. Approving needs the registration end date
+    staff confirmed with the university - the uploaded document is deleted
+    after processing, so it can't be the source - and issues the card under
+    the same email-confirmation rule as every other path."""
+    from datetime import date
+
+    review = get_object_or_404(ReviewRequest, pk=review_id, status='pending')
+    action = request.POST.get('action')
+    note = request.POST.get('staff_note', '').strip()[:1000]
+    student = review.user
+
+    if action == 'approve':
+        try:
+            end_date = date.fromisoformat(request.POST.get('registration_end_date', ''))
+        except ValueError:
+            messages.error(request, 'Enter the registration end date you confirmed with the university to approve.')
+            return redirect('report_review_requests')
+        if end_date < timezone.now().date():
+            messages.error(request, 'That registration end date has already passed - the card would be expired on issue.')
+            return redirect('report_review_requests')
+
+        student.is_verified = True
+        student.registration_end_date = end_date
+        student.save()
+        outcome = issue_card_if_allowed(student, request)
+        result = {
+            'issued': 'card issued',
+            'awaiting_email': 'card will be issued once they confirm their email',
+            'exists': 'they already had a card',
+        }[outcome]
+        messages.success(request, f'Approved {student.get_full_name_display()} - {result}.')
+    elif action == 'decline':
+        messages.success(request, f'Declined the review for {student.get_full_name_display()}.')
+    else:
+        messages.error(request, 'Choose Approve or Decline.')
+        return redirect('report_review_requests')
+
+    review.status = 'approved' if action == 'approve' else 'declined'
+    review.staff_note = note
+    review.resolved_at = timezone.now()
+    review.resolved_by = request.user
+    review.save()
+    return redirect('report_review_requests')
 
 
 @staff_member_required(login_url='login')

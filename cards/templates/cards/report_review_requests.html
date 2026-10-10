@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Review Requests - Admin{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Review Requests</h1>
+        <p class="lead">{{ pending|length }} pending — students the automated check didn't verify, waiting for a person to decide</p>
+    </div>
+</div>
+
+<div class="container my-5">
+    <p class="text-muted">
+        The uploaded document is deleted after processing, so confirm each student's registration with
+        the university's own records (e.g. iEnabler) before approving, and enter the registration end date
+        you confirmed. Approving issues the card once the student has confirmed their email.
+    </p>
+
+    <h2 class="h5 mt-4">Pending</h2>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th>
+                    <th>Student Number</th>
+                    <th>Reason</th>
+                    <th>Student's message</th>
+                    <th>Requested</th>
+                    <th>Decision</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in pending %}
+                    <tr>
+                        <td><a href="{% url 'staff_student_detail' review.user.id %}">{{ review.user.get_full_name_display }}</a></td>
+                        <td>{{ review.user.student_number }}</td>
+                        <td>{{ review.get_reason_display }}</td>
+                        <td>{{ review.message|default:"—" }}</td>
+                        <td>{{ review.created_at|date:"Y-m-d H:i" }}</td>
+                        <td>
+                            <form method="post" action="{% url 'resolve_review_request' review.id %}" class="d-flex flex-wrap gap-2 align-items-center mb-0">
+                                {% csrf_token %}
+                                <label class="visually-hidden" for="end-{{ review.id }}">Confirmed registration end date</label>
+                                <input type="date" id="end-{{ review.id }}" name="registration_end_date" min="{{ today|date:'Y-m-d' }}"
+                                       class="form-control form-control-sm" style="width: 150px;" title="Confirmed registration end date">
+                                <label class="visually-hidden" for="note-{{ review.id }}">Note to the student</label>
+                                <input type="text" id="note-{{ review.id }}" name="staff_note" maxlength="1000"
+                                       class="form-control form-control-sm" style="width: 200px;" placeholder="Note to the student (optional)">
+                                <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#198754; color:#fff;">Approve</button>
+                                <button type="submit" name="action" value="decline" class="btn btn-sm btn-outline-danger"
+                                        data-confirm="Decline the review for {{ review.user.get_full_name_display }}? They will see your note on their dashboard.">Decline</button>
+                            </form>
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">No reviews waiting</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="h5 mt-5">Recent decisions</h2>
+    <div class="table-responsive">
+        <table class="table table-sm">
+            <thead class="table-light">
+                <tr>
+                    <th>Student</th>
+                    <th>Reason</th>
+                    <th>Decision</th>
+                    <th>Note</th>
+                    <th>By</th>
+                    <th>When</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for review in resolved %}
+                    <tr>
+                        <td>{{ review.user.get_full_name_display }} ({{ review.user.student_number }})</td>
+                        <td>{{ review.get_reason_display }}</td>
+                        <td>
+                            {% if review.status == 'approved' %}
+                                <span class="badge bg-success">Approved</span>
+                            {% else %}
+                                <span class="badge bg-danger">Declined</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ review.staff_note|default:"—" }}</td>
+                        <td>{{ review.resolved_by.email|default:"Automatic" }}</td>
+                        <td>{{ review.resolved_at|date:"Y-m-d H:i" }}</td>
+                    </tr>
+                {% empty %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">No decisions yet</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Reports
+    </a>
+</div>
+{% endblock %}

@@ -55,6 +55,13 @@ class CustomUserCreationForm(AccessibleFormMixin, UserCreationForm):
             'required': 'You need to accept the Privacy Policy and Terms & Conditions before you can create an account.',
         },
     )
+    # Only shown after the document check rejects an upload: lets the student
+    # create the account anyway and have a staff member decide (POPIA s71),
+    # instead of the automated rejection being final.
+    request_review = forms.BooleanField(
+        required=False,
+        label='Ask a staff member to verify my registration',
+    )
 
     class Meta:
         model = User

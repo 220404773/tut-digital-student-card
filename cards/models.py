@@ -7,7 +7,6 @@ class StudentCard(models.Model):
     """Digital card for a student. One card per student."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_card')
     card_number = models.CharField(max_length=20, unique=True)
-    qr_code = models.ImageField(upload_to='qr_codes/', null=True, blank=True)
     issue_date = models.DateTimeField(auto_now_add=True)
     expiry_date = models.DateField(null=True, blank=True)
     status = models.CharField(

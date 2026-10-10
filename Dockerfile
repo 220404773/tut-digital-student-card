@@ -30,4 +30,8 @@ EXPOSE 8080
 # Default gunicorn worker timeout (30s) was killing requests mid-OCR - image
 # preprocessing (OpenCV) + Tesseract + the Azure OpenAI call routinely take
 # longer than that on this instance size.
-CMD ["gunicorn", "tut_student_card.wsgi", "--bind=0.0.0.0:8080", "--timeout=120"]
+# Migrations run on every start, before Gunicorn: a deploy that adds a model
+# (e.g. ReviewRequest) then can't serve pages against a database that doesn't
+# have its table yet. Safe to repeat - migrate does nothing when up to date -
+# and the app runs as a single instance, so two containers never race.
+CMD ["sh", "-c", "python manage.py migrate --noinput && exec gunicorn tut_student_card.wsgi --bind=0.0.0.0:8080 --timeout=120"]

@@ -46,21 +46,34 @@ class GetClientIpTests(SimpleTestCase):
 
 
 @override_settings(TRUSTED_PROXY_COUNT=1)
-class RateLimitPerClientBehindProxyTests(TestCase):
-    """The practical failure: ten students behind one proxy used up a single
-    shared login limit, locking out the eleventh."""
+class LoginRateLimitTests(TestCase):
+    """A whole campus reaches the site from one public IP address, so login
+    is limited per account rather than per network: a class logging in
+    together isn't locked out, but guessing one student's password still is."""
 
     def setUp(self):
         cache.clear()
 
-    def _login_attempt(self, client_ip):
+    def _login_attempt(self, email, client_ip):
         return self.client.post(
-            reverse('login'), {'email': 'nobody@tut4life.ac.za', 'password': 'wrong'},
+            reverse('login'), {'email': email, 'password': 'wrong'},
             REMOTE_ADDR=PROXY, HTTP_X_FORWARDED_FOR=client_ip,
         )
 
-    def test_one_clients_attempts_do_not_block_another_client(self):
+    def test_a_class_on_one_network_is_not_locked_out(self):
+        """The old per-IP limit blocked the 11th student on campus Wi-Fi."""
+        for number in range(15):
+            response = self._login_attempt(f'2204047{number:02d}@tut4life.ac.za', '198.51.100.7')
+            self.assertNotContains(response, 'Too many')
+
+    def test_guessing_one_accounts_password_is_blocked_from_any_network(self):
         for _ in range(11):
-            self._login_attempt('198.51.100.7')
-        self.assertContains(self._login_attempt('198.51.100.7'), 'Too many')
-        self.assertNotContains(self._login_attempt('198.51.100.8'), 'Too many')
+            self._login_attempt('target@tut4life.ac.za', '198.51.100.7')
+        self.assertContains(self._login_attempt('target@tut4life.ac.za', '198.51.100.7'), 'Too many')
+        # Switching network doesn't reset the count for that account.
+        self.assertContains(self._login_attempt('target@tut4life.ac.za', '203.0.113.9'), 'Too many')
+
+    def test_email_case_does_not_create_a_separate_allowance(self):
+        for _ in range(11):
+            self._login_attempt('target@tut4life.ac.za', '198.51.100.7')
+        self.assertContains(self._login_attempt('TARGET@tut4life.ac.za', '198.51.100.7'), 'Too many')

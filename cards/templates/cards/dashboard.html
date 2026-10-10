@@ -12,10 +12,38 @@
 
 <div class="container py-3">
     {% if not user.is_verified %}
-        <div class="alert alert-warning py-2 mb-2">
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>Verification Pending:</strong> Your registration proof is being processed. You will receive a confirmation once verified.
-        </div>
+        {% if latest_review.status == 'pending' %}
+            <div class="alert alert-info py-2 mb-2">
+                <i class="fas fa-user-clock" aria-hidden="true"></i>
+                <strong>Under review:</strong> a staff member is checking your registration with the university
+                (requested {{ latest_review.created_at|date:"M d, Y" }}). Your card will be issued once it is confirmed.
+            </div>
+        {% else %}
+            <div class="alert alert-warning py-2 mb-2">
+                <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                {% if latest_review.status == 'declined' %}
+                    <strong>Review declined:</strong> a staff member could not confirm your registration{% if latest_review.staff_note %}: {{ latest_review.staff_note }}{% else %}.{% endif %}
+                {% else %}
+                    <strong>Not verified yet:</strong> your proof of registration could not be verified automatically.
+                {% endif %}
+                You can upload a clearer copy of your current proof, or ask a staff member to review your registration.
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                    <a href="{% url 'reupload_proof' %}" class="btn btn-sm btn-dark">
+                        <i class="fas fa-upload" aria-hidden="true"></i> Upload again
+                    </a>
+                    <form method="post" action="{% url 'request_review' %}" class="d-flex flex-wrap gap-2 mb-0">
+                        {% csrf_token %}
+                        <label for="review-message" class="visually-hidden">Anything the reviewer should know (optional)</label>
+                        <input type="text" id="review-message" name="message" maxlength="1000"
+                               class="form-control form-control-sm" style="min-width: 260px;"
+                               placeholder="Anything the reviewer should know (optional)">
+                        <button type="submit" class="btn btn-sm btn-outline-dark">
+                            <i class="fas fa-user-check" aria-hidden="true"></i> Ask a staff member to review
+                        </button>
+                    </form>
+                </div>
+            </div>
+        {% endif %}
     {% endif %}
 
     {% if student_card.status == 'expired' %}

@@ -6,6 +6,7 @@ import uuid
 import hashlib
 from datetime import datetime, timedelta
 from django.conf import settings
+from django.urls import reverse
 from django.utils import timezone
 from PIL import Image, ImageEnhance
 import qrcode
@@ -51,6 +52,11 @@ def configure_tesseract():
         if candidate and os.path.exists(candidate):
             pytesseract.pytesseract.tesseract_cmd = candidate
             return
+
+# ET-02: the AI step, fallback included, gives up after this long and the
+# rule-based extraction takes over.
+LLM_TOTAL_BUDGET_SECONDS = 20
+
 
 class AzureOpenAIClient:
     """Calls a model deployed on our Azure OpenAI resource (South Africa
@@ -99,11 +105,53 @@ class AzureOpenAIClient:
         return SimpleNamespace(content=body['choices'][0]['message']['content'])
 
 
+class NvidiaClient:
+    """Fallback model on NVIDIA's hosted API, used only when the Azure call
+    fails. NVIDIA processes outside South Africa and there is no data
+    processing agreement in place, so unlike Azure this is a cross-border
+    transfer without that protection - ID numbers are still removed first,
+    and it is never called while Azure answers."""
+
+    URL = 'https://integrate.api.nvidia.com/v1/chat/completions'
+
+    def __init__(self, api_key, model, timeout):
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    def invoke(self, prompt, response_format=None):
+        from types import SimpleNamespace
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+
+        payload = {
+            'model': self.model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': 1024,
+            'temperature': 0,
+        }
+        if response_format:
+            payload['response_format'] = response_format
+        request = Request(
+            self.URL,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {self.api_key}'},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read().decode('utf-8'))
+        except HTTPError as e:
+            raise RuntimeError(f'NVIDIA returned {e.code}: {e.read().decode("utf-8", "replace")[:500]}') from e
+        return SimpleNamespace(content=body['choices'][0]['message']['content'])
+
+
+def _azure_configured():
+    return bool(settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_DEPLOYMENT)
+
+
 def get_llm_client():
-    """Return the Azure OpenAI client, or None when it isn't configured - in
-    which case extraction falls back to the rule-based path and no document
-    text leaves the server at all."""
-    if not (settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_DEPLOYMENT):
+    """Return the Azure OpenAI client, or None when it isn't configured."""
+    if not _azure_configured():
         return None
     return AzureOpenAIClient(
         endpoint=settings.AZURE_OPENAI_ENDPOINT,
@@ -111,10 +159,25 @@ def get_llm_client():
         deployment=settings.AZURE_OPENAI_DEPLOYMENT,
         api_version=settings.AZURE_OPENAI_API_VERSION,
         reasoning_effort=settings.AZURE_OPENAI_REASONING_EFFORT,
-        # ET-02: give up after 20 seconds and fall back to the regex
-        # extraction (extract_fields_from_text) rather than keep the student waiting.
-        timeout=20,
+        # Capped below the 20-second total (ET-02) when a fallback exists, so a
+        # hanging Azure call still leaves NVIDIA time to answer.
+        timeout=12 if settings.NVIDIA_API_KEY else LLM_TOTAL_BUDGET_SECONDS,
     )
+
+
+def get_llm_clients():
+    """Models to try, in order: Azure (South Africa North, under Microsoft's
+    Data Protection Addendum), then NVIDIA only if Azure fails. An empty list
+    means rule-based extraction only, with no document text leaving the server."""
+    clients = []
+    azure = get_llm_client()
+    if azure:
+        clients.append(('azure', azure))
+    if settings.NVIDIA_API_KEY:
+        clients.append(('nvidia', NvidiaClient(
+            settings.NVIDIA_API_KEY, settings.NVIDIA_MODEL, timeout=LLM_TOTAL_BUDGET_SECONDS,
+        )))
+    return clients
 
 
 # South African ID numbers: 13 digits, sometimes printed in groups
@@ -550,11 +613,11 @@ def extract_fields_from_text(text):
 
 def extract_with_llm(raw_text):
     """Use an LLM to both classify the document and structure its fields in a
-    single call, when Azure OpenAI is configured. Combining the two avoids a
-    second round-trip just for classification.
+    single call - Azure OpenAI first, NVIDIA only if Azure fails. Combining
+    the two avoids a second round-trip just for classification.
     """
-    llm = get_llm_client()
-    if llm is None:
+    clients = get_llm_clients()
+    if not clients:
         return None
 
     # Only text with ID numbers removed ever leaves the server, and the model
@@ -582,13 +645,26 @@ def extract_with_llm(raw_text):
         f"Text:\n{raw_text}"
     )
 
-    try:
-        response = llm.invoke(prompt, response_format={"type": "json_object"})
-        data = json.loads(response.content)
-        return normalize_llm_output(data)
-    except Exception as e:
-        print(f"LLM output parsing error: {str(e)}")
-        return None
+    # ET-02: one 20-second budget for the whole AI step. Azure fails either
+    # instantly (connection or HTTP error) or by timing out at its own cap; the
+    # fallback gets whatever time is left rather than a fixed slice.
+    deadline = time.monotonic() + LLM_TOTAL_BUDGET_SECONDS
+    for name, client in clients:
+        remaining = deadline - time.monotonic()
+        if remaining < 2:
+            print(f"LLM extraction skipped {name}: out of time")
+            break
+        client.timeout = min(client.timeout, remaining)
+        try:
+            response = client.invoke(prompt, response_format={"type": "json_object"})
+            result = normalize_llm_output(json.loads(response.content))
+            print(f"LLM extraction answered by {name}")
+            return result
+        except Exception as e:
+            # Try the next model; after the last one, the caller falls back
+            # to rule-based extraction.
+            print(f"LLM extraction failed on {name}: {str(e)}")
+    return None
 
 
 def normalize_llm_output(data):
@@ -770,9 +846,16 @@ def render_pdf_pages(pdf_path):
 
 
 def build_card_verification_url(card_number, request=None):
-    """Build the URL a scanned QR code should open to show the card."""
-    from django.urls import reverse
+    """Build the URL a scanned QR code should open to show the card.
+
+    SITE_URL, when set, pins the public address (e.g. the deployed
+    https://...ondigitalocean.app) so a QR code is right even when the page
+    showing it was reached another way. Otherwise the current request's
+    address is used.
+    """
     path = reverse('verify_card_public', args=[card_number])
+    if settings.SITE_URL:
+        return settings.SITE_URL.rstrip('/') + path
     return request.build_absolute_uri(path) if request is not None else path
 
 
@@ -800,41 +883,31 @@ def generate_unique_card_number(user):
     return f"TUT{user.id}{uuid.uuid4().hex[:8].upper()}"
 
 
-def generate_qr_code_for_card(student_card, request=None):
-    """Generate and save the verification QR code for a card that already
-    has a card_number - shared by generate_student_card() and by
-    StudentCardAdmin for manually-added cards, so both paths produce the
-    same kind of QR code.
-    """
-    from django.core.files.base import ContentFile
+def render_card_qr_png(card_number, request=None):
+    """Return the verification QR code for a card as PNG bytes.
 
-    qr_data = build_card_verification_url(student_card.card_number, request)
+    Generated each time it's shown rather than saved as a file: a stored
+    image fixes the web address at the moment the card was issued, so a new
+    domain or a restarted tunnel silently broke every existing QR code, and
+    a reissued card left an old image behind in storage.
+    """
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=10,
         border=4,
     )
-    qr.add_data(qr_data)
+    qr.add_data(build_card_verification_url(card_number, request))
     qr.make(fit=True)
-    qr_image = qr.make_image(fill_color="black", back_color="white")
-
-    # Save QR code through the FileField's own storage API (not a raw
-    # MEDIA_ROOT path) so this lands in the configured backend - local
-    # disk in dev, but S3/Spaces in production, where a container-local
-    # file would never actually be reachable at the saved URL.
-    qr_filename = f"qr_{student_card.card_number}.png"
     buffer = io.BytesIO()
-    qr_image.save(buffer, format='PNG')
-    student_card.qr_code.save(qr_filename, ContentFile(buffer.getvalue()), save=False)
-    student_card.save()
+    qr.make_image(fill_color="black", back_color="white").save(buffer, format='PNG')
+    return buffer.getvalue()
 
 
 def generate_student_card(user, request=None):
     """
-    Generate a digital student card for a verified user.
-    Creates card record and QR code that links to the card's public
-    verification page, so scanning it shows the card itself.
+    Generate a digital student card for a verified user. Its QR code isn't
+    stored - render_card_qr_png() draws it from the card number when shown.
     """
     from .models import StudentCard, CardActivity
 
@@ -854,8 +927,6 @@ def generate_student_card(user, request=None):
                 status='active'
             )
 
-            generate_qr_code_for_card(student_card, request)
-
             # Log activity
             CardActivity.objects.create(
                 student_card=student_card,
@@ -867,6 +938,25 @@ def generate_student_card(user, request=None):
     except Exception as e:
         print(f"Error generating student card: {str(e)}")
         raise
+
+
+def issue_card_if_allowed(user, request=None):
+    """Issue a newly verified student's first card - unless they still have
+    to confirm their email, in which case confirm_email() issues it then.
+
+    Every path that verifies a student by hand (a staff review approval, the
+    admin "verified" tick) goes through this, so none of them can skip the
+    email-confirmation step the automatic path requires.
+    Returns 'exists', 'awaiting_email' or 'issued'.
+    """
+    from .models import StudentCard
+
+    if StudentCard.objects.filter(user=user).exists():
+        return 'exists'
+    if settings.REQUIRE_EMAIL_CONFIRMATION_FOR_CARD and not user.email_confirmed:
+        return 'awaiting_email'
+    generate_student_card(user, request)
+    return 'issued'
 
 
 def get_card_display_data(student_card):
@@ -884,6 +974,7 @@ def get_card_display_data(student_card):
         'expiry_date': student_card.expiry_date.strftime('%Y-%m-%d') if student_card.expiry_date else None,
         'status': student_card.status,
         'is_valid': student_card.is_valid(),
-        'qr_code_url': student_card.qr_code.url if student_card.qr_code else None,
+        # The card owner's own QR image, drawn on request by card_qr_image.
+        'qr_code_url': reverse('card_qr_image'),
         'profile_picture_url': user.profile_picture.url if user.profile_picture else None,
     }

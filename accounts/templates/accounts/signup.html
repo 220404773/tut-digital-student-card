@@ -82,6 +82,18 @@
                             {% endif %}
                         </div>
 
+                        {% if offer_review %}
+                            <div class="form-check mt-3 p-3 border rounded bg-light">
+                                {{ form.request_review }}
+                                <label class="form-check-label" for="{{ form.request_review.id_for_label }}">
+                                    <strong>{{ form.request_review.label }}</strong><br>
+                                    Your account will be created without a card. A staff member will check
+                                    your registration with the university and verify you if it is confirmed.
+                                    You will need to attach your document again.
+                                </label>
+                            </div>
+                        {% endif %}
+
                         <button type="submit" class="btn btn-primary w-100 mt-3">
                             <i class="fas fa-user-check" aria-hidden="true"></i> Create Account
                         </button>

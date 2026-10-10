@@ -84,3 +84,52 @@ class DeletedStudentLog(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.student_number}) - deleted {self.deleted_at}"
+
+
+class ReviewRequest(models.Model):
+    """A request for a staff member to check a registration the system
+    didn't verify automatically.
+
+    POPIA section 71: a decision based solely on automated processing - here,
+    whether someone is accepted as a registered student - must give the person
+    a way to have it looked at by a human. Created automatically when the
+    system itself is unsure (student-number mismatch, a borderline confidence
+    score), or by the student when they disagree with a rejection. Staff
+    resolve it by confirming registration through the university's own
+    records, since the uploaded document is deleted after processing.
+    """
+    REASON_CHOICES = [
+        ('number_mismatch', 'Student number on document differs from the one entered'),
+        ('low_confidence', 'Document read with borderline confidence'),
+        ('document_rejected', 'Document rejected as not a TUT proof of registration'),
+        ('student_request', 'Student asked for a review'),
+    ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('declined', 'Declined'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='review_requests')
+    reason = models.CharField(max_length=20, choices=REASON_CHOICES)
+    message = models.TextField(blank=True, max_length=1000)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    staff_note = models.TextField(blank=True, max_length=1000)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.student_number} - {self.get_reason_display()} ({self.status})"
+
+    @classmethod
+    def open_for(cls, user, reason, message=''):
+        """Create a pending request unless one is already open - a student
+        shouldn't be able to queue up duplicates for staff."""
+        existing = cls.objects.filter(user=user, status='pending').first()
+        return existing or cls.objects.create(user=user, reason=reason, message=message)

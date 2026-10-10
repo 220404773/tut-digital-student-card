@@ -7,8 +7,8 @@ from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
 from cards.models import StudentCard, CardActivity
-from cards.utils import generate_student_card, generate_unique_card_number, generate_qr_code_for_card
-from .models import User, DeletedStudentLog
+from cards.utils import generate_student_card, generate_unique_card_number, issue_card_if_allowed
+from .models import User, DeletedStudentLog, ReviewRequest
 from .views import delete_registration_proof
 
 STAFF_ADMIN_NUMBER_RE = re.compile(r'^STAFF-ADMIN-(\d+)$')
@@ -57,10 +57,8 @@ class StudentUserAdmin(UserAdmin):
             except Exception:
                 return False, False, True
 
-        # The new QR filename is based on the new card number, so it won't
-        # overwrite the old one - without deleting it explicitly, every
-        # reissue would leave the previous QR image orphaned in storage forever.
-        old_qr_code = card.qr_code
+        # A new card number is enough: the QR code is drawn from it each time
+        # it's shown, so the old QR code stops working with no file to clean up.
         card.card_number = generate_unique_card_number(student)
         card.status = 'active'
         # Restore the expiry from the student's actual proof of registration,
@@ -69,9 +67,6 @@ class StudentUserAdmin(UserAdmin):
         # immediately flip back to 'expired' on the next refresh_status().
         card.expiry_date = student.registration_end_date or card.expiry_date
         card.save()
-        generate_qr_code_for_card(card, request)
-        if old_qr_code:
-            old_qr_code.storage.delete(old_qr_code.name)
         CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
         return True, False, False
 
@@ -192,20 +187,31 @@ class StudentUserAdmin(UserAdmin):
         if obj.registration_proof:
             delete_registration_proof(obj)
 
-        # Ticking "is_verified" here is a manual/soft approval - equivalent
-        # to the OCR auto-verification path in signup(), so it should
-        # generate the student's card the same way. generate_student_card
-        # already no-ops if a card exists, so this is safe to call on
-        # every save rather than only on the True transition.
-        if obj.is_verified and not StudentCard.objects.filter(user=obj).exists():
+        # Ticking "is_verified" here is a manual approval - equivalent to the
+        # OCR auto-verification path in signup(), so the card follows the same
+        # rule: issued now, or once the student confirms their email.
+        if obj.is_verified and not obj.is_staff:
             try:
-                generate_student_card(obj, request)
-                self.message_user(request, 'Digital student card generated for this student.')
+                outcome = issue_card_if_allowed(obj, request)
+                if outcome == 'issued':
+                    self.message_user(request, 'Digital student card generated for this student.')
+                elif outcome == 'awaiting_email':
+                    self.message_user(request, 'Student verified - their card will be issued once they confirm their email.')
             except Exception as e:
                 self.message_user(request, f'Error generating card: {str(e)}', level=messages.ERROR)
 
 
 admin.site.register(User, StudentUserAdmin)
+
+
+@admin.register(ReviewRequest)
+class ReviewRequestAdmin(admin.ModelAdmin):
+    """Read-mostly view; decisions are made on the Review Requests report,
+    which also verifies the student and issues their card."""
+    list_display = ('user', 'reason', 'status', 'created_at', 'resolved_by', 'resolved_at')
+    list_filter = ('status', 'reason')
+    search_fields = ('user__student_number', 'user__email')
+    readonly_fields = ('user', 'reason', 'message', 'created_at', 'resolved_at', 'resolved_by')
 admin.site.unregister(Group)
 
 # The "View site" link in the admin header (admin/base.html's {{ site_url }})

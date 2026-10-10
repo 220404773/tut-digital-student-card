@@ -19,6 +19,13 @@ ALLOWED_HOSTS = config(
 # http:// links even when the site is served over https://.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# The public address QR codes point to, e.g. https://your-app.ondigitalocean.app
+# Optional: left blank, a QR code uses the address the page was opened on,
+# which is wrong when a student views their card via another address
+# (localhost, an old tunnel URL). QR codes are drawn on demand, so changing
+# this updates every card's QR code at once.
+SITE_URL = config('SITE_URL', default='')
+
 # The same load balancer hides the client's IP address - see client_ip.py.
 # Set one of these to match the host, never both blindly: a header the proxy
 # doesn't actually set can be forged by any client.
@@ -272,6 +279,15 @@ AZURE_OPENAI_API_VERSION = config('AZURE_OPENAI_API_VERSION', default='2025-04-0
 # 'minimal' is the fastest setting for GPT-5 models; leave blank for models
 # that don't accept a reasoning_effort parameter.
 AZURE_OPENAI_REASONING_EFFORT = config('AZURE_OPENAI_REASONING_EFFORT', default='minimal')
+
+# Fallback, used only when the Azure call fails. NVIDIA processes outside South
+# Africa with no data processing agreement in place, so this is a cross-border
+# transfer under POPIA s72 without that protection. Leave blank to fall back
+# to rule-based extraction instead.
+NVIDIA_API_KEY = config('NVIDIA_API_KEY', default='')
+# NVIDIA retires hosted models (meta/llama-3.1-8b-instruct ended 26 Aug 2026),
+# so check this still answers before relying on it.
+NVIDIA_MODEL = config('NVIDIA_MODEL', default='nvidia/nemotron-3-super-120b-a12b')
 
 # Document verification proves a proof-of-registration document was uploaded
 # and could be read - it cannot prove the uploader is the person named on it,

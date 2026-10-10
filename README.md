@@ -6,7 +6,7 @@ A digital student ID card system for Tshwane University of Technology. Students 
 
 ## Features
 
-- **Signup with document verification** — student number + proof of registration (PDF/JPG/PNG), read via Tesseract OCR and classified/extracted by an NVIDIA-hosted LLM
+- **Signup with document verification** — student number + proof of registration (PDF/JPG/PNG), read via Tesseract OCR and classified/extracted by Azure OpenAI (South Africa North), with NVIDIA as a fallback only if Azure fails
 - **Digital card** — auto-generated on verification, with a unique card number and QR code
 - **Email confirmation** — a separate identity check from OCR verification, requiring an explicit button click (not just visiting the link) so email security scanners can't silently consume it
 - **Google Wallet** — "Add to Google Wallet" button, signed via a service account key, no custom branding required
@@ -69,8 +69,12 @@ venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env - at minimum set NVIDIA_API_KEY if you want OCR classification to work;
-# everything else has a working local default (SQLite, local media/ folder, console email backend)
+# Edit .env - set the AZURE_OPENAI_* values for AI document classification (NVIDIA_API_KEY
+# optionally, as a fallback). Without them, documents are classified by the rule-based
+# checker instead. Everything else has a working local default (SQLite, local media/
+# folder, console email backend).
+
+python manage.py collectstatic --noinput   # tests and DEBUG=False read the static manifest
 
 python manage.py migrate
 python manage.py createsuperuser
@@ -98,11 +102,11 @@ docker run -p 8080:8080 --env-file .env tut-student-card
 python manage.py test
 ```
 
-56 tests covering signup/login, email confirmation (including that a bare link visit does *not* confirm, only the button click), password reset, file upload validation, OCR classification thresholds, card expiry, admin card auto-generation, the STAFF-ADMIN placeholder numbering, and staff/student permission boundaries.
+Tests cover signup/login, email confirmation (including that a bare link visit does *not* confirm, only the button click), password reset, file upload validation, document classification and the AI fallback order, student-number and email identity checks, staff review requests, rate limits, QR codes, card expiry, the Content-Security-Policy, and staff/student permission boundaries.
 
 ## Configuration
 
-Every environment variable the app reads is documented with comments in **`.env.example`** — copy it to `.env` and fill in what you need. Nothing is required for local development beyond `NVIDIA_API_KEY` (and even that only affects OCR classification quality, not whether the app runs).
+Every environment variable the app reads is documented with comments in **`.env.example`** — copy it to `.env` and fill in what you need. Nothing is required for local development: without the `AZURE_OPENAI_*` values the rule-based classifier is used, which affects classification quality, not whether the app runs.
 
 For production values (DigitalOcean Managed Database, Spaces, Azure Communication Services, Google Wallet)
 
@@ -112,10 +116,12 @@ For production values (DigitalOcean Managed Database, Spaces, Azure Communicatio
 
 1. Student uploads a proof-of-registration document (PDF/JPG/PNG, max 5MB, validated against actual file content, not just the extension)
 2. Text is extracted directly (PDFs with a real text layer) or via Tesseract OCR (scanned/photographed documents)
-3. An NVIDIA-hosted LLM (`meta/llama-3.1-8b-instruct`) classifies whether it's genuinely a TUT proof of registration and extracts student number/name/dates in one call; a regex-based fallback classifier runs if the LLM is unavailable
-4. If confidence is high enough, the account is auto-verified and a digital card (unique card number + QR code) is generated immediately
-5. The uploaded document is deleted after processing regardless of outcome (POPIA) — including on every code path, not just the success path
-6. A confirmation email is sent separately — this verifies the student controls the email address, independent of the document check
+3. ID numbers are removed from the text, then Azure OpenAI (`gpt-5-nano`, South Africa North) classifies whether it's genuinely a TUT proof of registration and extracts student number/name/dates in one call. If Azure fails, NVIDIA's hosted API is tried within the same 20-second budget; if both fail, a rule-based classifier takes over
+4. A document is accepted only when the model says it is a TUT proof of registration *and* its confidence is at least 0.8, and the student number on it must match the one entered. The card is issued once the student confirms their `{student_number}@tut4life.ac.za` email
+5. Anything the system can't verify on its own (a student-number mismatch, a borderline score, or a rejection the student disputes) goes to a staff **Review Requests** queue, where a person makes the decision (POPIA s71)
+6. The uploaded document is deleted after processing regardless of outcome (POPIA) — including on every code path, not just the success path
+7. A confirmation email is sent separately — this verifies the student controls the email address, independent of the document check
+8. The card's QR code is drawn from its card number each time it's shown (never stored), pointing at `SITE_URL` when set
 
 ### Manual (admin) verification
 
