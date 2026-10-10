@@ -409,6 +409,14 @@ def process_registration_proof(file):
         llm_duration = time.perf_counter() - llm_start
         print(f"OCR pipeline timing: extraction={extraction_duration:.2f}s llm={llm_duration:.2f}s total={extraction_duration + llm_duration:.2f}s")
         classification = resolve_document_classification(extracted_text, llm_result)
+        # Verdict and score only - no document content - so a rejected upload
+        # can be diagnosed from the server log without logging personal data.
+        print(
+            f"Classification: source={'llm' if llm_result else 'rules'} "
+            f"model_said={llm_result.get('is_tut_proof_of_registration') if llm_result else '-'} "
+            f"confidence={classification['classification_confidence']} "
+            f"accepted={classification['is_tut_proof_of_registration']}"
+        )
 
         if not classification['is_tut_proof_of_registration']:
             if os.path.exists(temp_path):

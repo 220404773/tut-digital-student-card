@@ -179,22 +179,22 @@ if AWS_STORAGE_BUCKET_NAME:
 # template escaping. Inline <script> blocks carry a per-request nonce
 # ({{ request.csp_nonce }}); inline style attributes are still allowed, as the
 # templates use them throughout and they can't run code.
-# connect-src repeats the CDNs because the service worker (static/sw.js)
-# re-fetches every request, and its fetches are checked against connect-src.
+# Bootstrap and Font Awesome are served from static/vendor/, so nothing needs
+# a third-party origin. connect-src includes the media origin because the
+# service worker (static/sw.js) re-fetches every request, profile photos
+# included, and its fetches are checked against connect-src.
 from csp.constants import NONCE, NONE, SELF, UNSAFE_INLINE
 
-_JSDELIVR = 'https://cdn.jsdelivr.net'
-_CDNJS = 'https://cdnjs.cloudflare.com'
 _MEDIA_ORIGINS = [AWS_S3_ENDPOINT_URL] if AWS_STORAGE_BUCKET_NAME else []
 _CSP = {
     'DIRECTIVES': {
         'default-src': [SELF],
-        'script-src': [SELF, NONCE, _JSDELIVR],
-        'style-src': [SELF, UNSAFE_INLINE, _JSDELIVR, _CDNJS],
-        'font-src': [SELF, _CDNJS],
+        'script-src': [SELF, NONCE],
+        'style-src': [SELF, UNSAFE_INLINE],
+        'font-src': [SELF],
         # data: is Bootstrap's own inline SVG icons (select arrows, checkboxes).
         'img-src': [SELF, 'data:', *_MEDIA_ORIGINS],
-        'connect-src': [SELF, _JSDELIVR, _CDNJS, *_MEDIA_ORIGINS],
+        'connect-src': [SELF, *_MEDIA_ORIGINS],
         'worker-src': [SELF],
         'manifest-src': [SELF],
         'object-src': [NONE],

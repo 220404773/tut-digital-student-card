@@ -51,6 +51,15 @@ class CspHeaderTests(TestCase):
             with self.subTest(page=name):
                 self.assert_every_inline_script_is_nonced(self.client.get(reverse(name)))
 
+    def test_pages_load_no_third_party_scripts_or_styles(self):
+        """Bootstrap and Font Awesome are self-hosted: a CDN blocked by a
+        network or a managed browser left pages unstyled, and every page load
+        sent the visitor's IP address to the CDN."""
+        html = self.client.get(reverse('home')).content.decode()
+        for tag in re.findall(r'<(?:script|link)\b[^>]*>', html, re.IGNORECASE):
+            self.assertNotRegex(tag, r'(src|href)="https?://', tag)
+        self.assertNotIn('https://', policy_header(self.client.get(reverse('home'))))
+
     def test_each_request_gets_a_fresh_nonce(self):
         first = policy_header(self.client.get(reverse('home')))
         second = policy_header(self.client.get(reverse('home')))
