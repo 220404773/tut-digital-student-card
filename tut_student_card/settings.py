@@ -260,7 +260,18 @@ GOOGLE_WALLET_CREDENTIALS_JSON = config('GOOGLE_WALLET_CREDENTIALS_JSON', defaul
 # OCR Settings
 OCR_ENABLED = True
 OCR_CONFIDENCE_THRESHOLD = 0.8
-NVIDIA_API_KEY = config('NVIDIA_API_KEY', default='')
+# AI document extraction runs on our own Azure OpenAI resource in South Africa
+# North. Leave these unset and extraction is rule-based only, with no document
+# text sent anywhere. The deployment type (set in the Foundry portal) decides
+# where processing happens: a regional "Standard" deployment keeps it in South
+# Africa; "Global Standard" or "Data Zone" deployments can process elsewhere.
+AZURE_OPENAI_ENDPOINT = config('AZURE_OPENAI_ENDPOINT', default='')
+AZURE_OPENAI_API_KEY = config('AZURE_OPENAI_API_KEY', default='')
+AZURE_OPENAI_DEPLOYMENT = config('AZURE_OPENAI_DEPLOYMENT', default='')
+AZURE_OPENAI_API_VERSION = config('AZURE_OPENAI_API_VERSION', default='2025-04-01-preview')
+# 'minimal' is the fastest setting for GPT-5 models; leave blank for models
+# that don't accept a reasoning_effort parameter.
+AZURE_OPENAI_REASONING_EFFORT = config('AZURE_OPENAI_REASONING_EFFORT', default='minimal')
 
 # Document verification proves a proof-of-registration document was uploaded
 # and could be read - it cannot prove the uploader is the person named on it,

@@ -83,6 +83,24 @@ class LLMClassificationResolutionTests(TestCase):
         resolved = resolve_document_classification('irrelevant', llm_result)
         self.assertFalse(resolved['is_tut_proof_of_registration'])
 
+    def test_high_confidence_no_is_still_rejected(self):
+        """The model can be sure a document is NOT a TUT proof (e.g. another
+        university's proof of registration) - that confidence must never be
+        read as acceptance."""
+        llm_result = normalize_llm_output({
+            'is_tut_proof_of_registration': False,
+            'classification_confidence': 0.85,
+        })
+        resolved = resolve_document_classification('irrelevant', llm_result)
+        self.assertFalse(resolved['is_tut_proof_of_registration'])
+
+    def test_llm_answering_true_as_a_string_is_accepted(self):
+        llm_result = normalize_llm_output({
+            'is_tut_proof_of_registration': 'true',
+            'classification_confidence': 0.9,
+        })
+        self.assertTrue(resolve_document_classification('irrelevant', llm_result)['is_tut_proof_of_registration'])
+
     def test_llm_percentage_confidence_normalized_to_0_1_scale(self):
         llm_result = normalize_llm_output({'classification_confidence': 92})
         resolved = resolve_document_classification('irrelevant', llm_result)

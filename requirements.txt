@@ -4,15 +4,10 @@ qrcode==7.4.2
 pytesseract==0.3.10
 opencv-python-headless==4.10.0.84
 numpy==1.26.4
-# Pinned to the last versions that actually support Django 4.2 - newer
-# django-crispy-forms releases hard-require Django>=5.2 (a real install-time
-# constraint, not just metadata - a clean `pip install -r requirements.txt`
-# fails with ResolutionImpossible on anything newer than this).
 django-crispy-forms==2.1
 crispy-bootstrap5==2024.2
 python-decouple==3.8
 PyMuPDF==1.24.10
-langchain-nvidia-ai-endpoints>=0.3.10
 psycopg2-binary==2.9.7
 gunicorn==21.2.0
 whitenoise==6.5.0

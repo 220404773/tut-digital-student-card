@@ -52,38 +52,84 @@ def configure_tesseract():
             pytesseract.pytesseract.tesseract_cmd = candidate
             return
 
-try:
-    from langchain_nvidia_ai_endpoints import ChatNVIDIA
-    LLM_AVAILABLE = True
-except ImportError:
-    ChatNVIDIA = None
-    LLM_AVAILABLE = False
+class AzureOpenAIClient:
+    """Calls a model deployed on our Azure OpenAI resource (South Africa
+    North), covered by Microsoft's Data Protection Addendum - the POPIA s72
+    basis for sending document text to it. Uses the REST API through the
+    standard library rather than another SDK, and exposes the same
+    invoke(...).content shape extract_with_llm() expects."""
 
+    def __init__(self, endpoint, api_key, deployment, api_version, reasoning_effort, timeout):
+        self.url = (f"{endpoint.rstrip('/')}/openai/deployments/{deployment}"
+                    f"/chat/completions?api-version={api_version}")
+        self.api_key = api_key
+        self.reasoning_effort = reasoning_effort
+        self.timeout = timeout
 
-def get_nvidia_api_key():
-    """Return the NVIDIA API key from Django settings or the environment."""
-    return getattr(settings, 'NVIDIA_API_KEY', '') or os.getenv('NVIDIA_API_KEY', '')
+    def invoke(self, prompt, response_format=None):
+        from types import SimpleNamespace
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+
+        payload = {
+            'messages': [{'role': 'user', 'content': prompt}],
+            # Reasoning models count their hidden reasoning against this
+            # limit too, so it needs headroom beyond the JSON answer itself.
+            'max_completion_tokens': 2000,
+        }
+        if response_format:
+            payload['response_format'] = response_format
+        if self.reasoning_effort:
+            # Least reasoning = fastest answer; extraction from a short
+            # document doesn't need more, and ET-02 allows 20 seconds.
+            payload['reasoning_effort'] = self.reasoning_effort
+
+        request = Request(
+            self.url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={'Content-Type': 'application/json', 'api-key': self.api_key},
+        )
+        try:
+            with urlopen(request, timeout=self.timeout) as response:
+                body = json.loads(response.read().decode('utf-8'))
+        except HTTPError as e:
+            # The status line alone ("400 Bad Request") doesn't say what Azure
+            # objected to - the response body does.
+            raise RuntimeError(f'Azure OpenAI returned {e.code}: {e.read().decode("utf-8", "replace")[:500]}') from e
+        return SimpleNamespace(content=body['choices'][0]['message']['content'])
 
 
 def get_llm_client():
-    """Create the NVIDIA chat model only when the dependency and key are available."""
-    api_key = get_nvidia_api_key()
-    if not LLM_AVAILABLE or not api_key:
+    """Return the Azure OpenAI client, or None when it isn't configured - in
+    which case extraction falls back to the rule-based path and no document
+    text leaves the server at all."""
+    if not (settings.AZURE_OPENAI_ENDPOINT and settings.AZURE_OPENAI_API_KEY and settings.AZURE_OPENAI_DEPLOYMENT):
         return None
-
-    return ChatNVIDIA(
-        # Traded down from meta/llama-3.3-70b-instruct for faster inference on
-        # the low-CPU deployment instance - some accuracy tradeoff on messier/
-        # noisier OCR text is expected in exchange.
-        model='meta/llama-3.1-8b-instruct',
-        nvidia_api_key=api_key,
-        # Default client timeout is 60s - a real signup hit that exact
-        # timeout with no result. extract_with_llm already has a solid
-        # regex fallback (extract_fields_from_text), so it's better to give
-        # up on a slow NVIDIA response sooner and fail over, rather than
-        # make the student wait a full 60s for a call that isn't answering.
+    return AzureOpenAIClient(
+        endpoint=settings.AZURE_OPENAI_ENDPOINT,
+        api_key=settings.AZURE_OPENAI_API_KEY,
+        deployment=settings.AZURE_OPENAI_DEPLOYMENT,
+        api_version=settings.AZURE_OPENAI_API_VERSION,
+        reasoning_effort=settings.AZURE_OPENAI_REASONING_EFFORT,
+        # ET-02: give up after 20 seconds and fall back to the regex
+        # extraction (extract_fields_from_text) rather than keep the student waiting.
         timeout=20,
     )
+
+
+# South African ID numbers: 13 digits, sometimes printed in groups
+# (YYMMDD SSSS CAZ), or any 10-13 digit number labelled as an ID number.
+_SA_ID_NUMBER = re.compile(r'\b\d{6}\s?\d{4}\s?\d{3}\b')
+_LABELLED_ID_NUMBER = re.compile(r'(ID\s*Number\s*[:#\-]?\s*)\d{10,13}', re.IGNORECASE)
+
+
+def redact_id_numbers(text):
+    """Remove ID numbers before document text is sent to the language model.
+    The system never uses the ID number, so it has no reason to leave the
+    server - data minimisation under POPIA, and the most sensitive field on
+    the document stops being part of any cross-border transfer."""
+    text = _LABELLED_ID_NUMBER.sub(r'\1[REMOVED]', text or '')
+    return _SA_ID_NUMBER.sub('[REMOVED]', text)
 
 
 def classify_tut_proof_of_registration(text):
@@ -496,22 +542,35 @@ def extract_fields_from_text(text):
 
 def extract_with_llm(raw_text):
     """Use an LLM to both classify the document and structure its fields in a
-    single call, when NVIDIA access is available. Combining the two avoids a
+    single call, when Azure OpenAI is configured. Combining the two avoids a
     second round-trip just for classification.
     """
     llm = get_llm_client()
     if llm is None:
         return None
 
+    # Only text with ID numbers removed ever leaves the server, and the model
+    # isn't asked for an ID number either.
+    raw_text = redact_id_numbers(raw_text)
     prompt = (
         "You are an expert at analyzing TUT (Tshwane University of Technology) proof-of-registration documents. "
         "First decide whether the provided text is genuinely a TUT proof of registration. "
         "Then extract the requested fields. Use only the provided text - do not guess. If a field is missing, return null.\n\n"
+        # Without a scoring guide the model's self-rated confidence for a
+        # genuine document wandered between 0.58 and 0.80 - either side of
+        # the 0.8 threshold, so the same document could pass or fail.
+        "Score classification_confidence with this guide:\n"
+        "- 0.95: the text names Tshwane University of Technology, states the student is registered, "
+        "and contains a student number and a registration period.\n"
+        "- 0.85: one of those four is missing or unclear.\n"
+        "- 0.5 or lower: two or more are missing, or it is a different document type "
+        "(timetable, fee statement, results, another institution).\n"
+        "Text from scanned documents may contain OCR errors; do not lower the score for those alone.\n\n"
         "Return valid JSON only with these keys:\n"
         "is_tut_proof_of_registration (true or false), "
-        "classification_confidence (a number from 0.0 to 1.0, how confident you are in that classification), "
+        "classification_confidence (a number from 0.0 to 1.0, scored with the guide above), "
         "classification_reason (a short explanation), "
-        "student_number, student_name, full_name, id_number, academic_year, university_name, qualification, period, email.\n\n"
+        "student_number, student_name, full_name, academic_year, university_name, qualification, period, email.\n\n"
         f"Text:\n{raw_text}"
     )
 
@@ -565,7 +624,11 @@ def resolve_document_classification(extracted_text, llm_result):
             if confidence > 1:
                 confidence = confidence / 100
             confidence = round(confidence, 2)
-            is_tut_proof = confidence >= 0.8
+            # Both must hold. The confidence alone isn't enough: a model can
+            # be confident a document is *not* a TUT proof, and that number
+            # read on its own would accept it.
+            said_yes = str(llm_result.get('is_tut_proof_of_registration')).strip().lower() == 'true'
+            is_tut_proof = said_yes and confidence >= 0.8
             return {
                 'document_type': 'TUT Proof of Registration' if is_tut_proof else 'unknown',
                 'is_tut_proof_of_registration': is_tut_proof,
