@@ -19,6 +19,7 @@ urlpatterns = [
     path('reports/reviews/', views.report_review_requests, name='report_review_requests'),
     path('reports/reviews/<int:review_id>/resolve/', views.resolve_review_request, name='resolve_review_request'),
     path('reports/photos/<int:user_id>/resolve/', views.resolve_photo_change, name='resolve_photo_change'),
+    path('reports/names/<int:user_id>/resolve/', views.resolve_name_change, name='resolve_name_change'),
     path('reports/visits/', views.report_visits, name='report_visits'),
     path('reports/visitors/', views.report_visit_users, name='report_visit_users'),
     path('reports/visitors/<int:user_id>/', views.report_user_visits, name='report_user_visits'),

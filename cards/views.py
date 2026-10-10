@@ -258,6 +258,7 @@ def performance_dashboard(request):
         ).count(),
         'pending_reviews_count': ReviewRequest.objects.filter(status='pending').count(),
         'pending_photo_changes_count': students_with_photo_changes().count(),
+        'pending_name_changes_count': students_with_name_changes().count(),
     }
 
     # Site traffic
@@ -501,12 +502,46 @@ def report_review_requests(request):
         'pending': pending,
         'resolved': resolved,
         'photo_changes': students_with_photo_changes(),
+        'name_changes': students_with_name_changes(),
         'today': timezone.now().date(),
     })
 
 
 def students_with_photo_changes():
     return User.objects.exclude(pending_profile_picture='').exclude(pending_profile_picture__isnull=True).order_by('pk')
+
+
+def students_with_name_changes():
+    return User.objects.filter(name_change_requested_at__isnull=False).order_by('name_change_requested_at')
+
+
+@staff_member_required(login_url='login')
+@require_POST
+def resolve_name_change(request, user_id):
+    """Approve or reject a name change a student made after their card was
+    issued. The name is printed on the card, so it only changes once a person
+    has checked it against the university's records."""
+    student = get_object_or_404(User, pk=user_id)
+    if not student.name_change_requested_at:
+        messages.info(request, 'That name change has already been decided.')
+        return redirect('report_review_requests')
+
+    action = request.POST.get('action')
+    if action not in ('approve', 'reject'):
+        messages.error(request, 'Choose Approve or Reject.')
+        return redirect('report_review_requests')
+    if action == 'approve':
+        student.first_name, student.last_name = student.pending_first_name, student.pending_last_name
+    requested = f'{student.pending_first_name} {student.pending_last_name}'.strip()
+    student.pending_first_name = student.pending_last_name = ''
+    student.name_change_requested_at = None
+    student.save(update_fields=['first_name', 'last_name', 'pending_first_name', 'pending_last_name',
+                                'name_change_requested_at'])
+    if action == 'approve':
+        messages.success(request, f'Approved the name change - the card now shows {requested}.')
+    else:
+        messages.success(request, f'Rejected the name change to {requested} - the card keeps {student.get_full_name_display()}.')
+    return redirect('report_review_requests')
 
 
 @staff_member_required(login_url='login')

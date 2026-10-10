@@ -25,6 +25,11 @@ class User(AbstractUser):
     # member approves it - the card's photo is what a guard checks the
     # holder's face against (settings.REQUIRE_PHOTO_FOR_CARD).
     pending_profile_picture = models.ImageField(upload_to='profile_pictures/pending/', null=True, blank=True)
+    # Likewise a name change after the card was issued: the name is printed on
+    # the card, so it only changes once a staff member approves it.
+    pending_first_name = models.CharField(max_length=150, blank=True, default='')
+    pending_last_name = models.CharField(max_length=150, blank=True, default='')
+    name_change_requested_at = models.DateTimeField(null=True, blank=True)
 
     # Confirms the student actually controls the email address on the
     # account - independent of is_verified, which only checks that an

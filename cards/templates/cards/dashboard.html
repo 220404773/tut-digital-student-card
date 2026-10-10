@@ -47,6 +47,14 @@
         {% endif %}
     {% endif %}
 
+    {% if user.name_change_requested_at %}
+        <div class="alert alert-info py-2 mb-2" role="status">
+            <i class="fas fa-user-edit" aria-hidden="true"></i>
+            <strong>Name change waiting for approval:</strong> your card shows {{ user.get_full_name_display }} until a
+            staff member approves {{ user.pending_first_name }} {{ user.pending_last_name }}.
+        </div>
+    {% endif %}
+
     {% if user.pending_profile_picture %}
         <div class="alert alert-info py-2 mb-2" role="status">
             <i class="fas fa-camera" aria-hidden="true"></i>

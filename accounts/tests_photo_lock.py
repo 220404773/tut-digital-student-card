@@ -1,6 +1,7 @@
-"""The card's photo is what a guard compares with the person showing it, so a
-card is only issued once there is a photo, and after that a new photo waits
-for a staff member - otherwise anyone could put a friend's face on their card.
+"""The card's photo and name are what a guard checks the person showing it
+against. So a card is only issued once there is a photo, and after that a new
+photo or a new name waits for a staff member - otherwise anyone could put a
+friend's face or name on their card.
 """
 import io
 import shutil
@@ -150,6 +151,93 @@ class PhotoLockTests(TestCase):
     @override_settings(REQUIRE_PHOTO_FOR_CARD=False)
     def test_the_lock_can_be_switched_off_for_an_offline_demo(self):
         self.assertEqual(issue_card_if_allowed(self.student), 'issued')
+
+
+@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+class NameLockTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!', first_name='Kekeletso', last_name='Khaka',
+            is_verified=True, email_confirmed=True,
+        )
+        self.staff = User.objects.create_superuser(
+            username='admin@tut4life.ac.za', email='admin@tut4life.ac.za',
+            student_number='STAFF-0001', password='StrongPass123!',
+        )
+        self.client.force_login(self.student)
+
+    def _save_profile(self, **fields):
+        return self.client.post(reverse('profile'), profile_form(**fields), follow=True)
+
+    def _give_card(self):
+        StudentCard.objects.create(user=self.student, card_number='TUT-NAME-0001')
+
+    def test_before_a_card_exists_the_name_changes_straight_away(self):
+        """Correcting a misread name before the card is issued needs no approval."""
+        self._save_profile(first_name='Keke')
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.first_name, 'Keke')
+        self.assertIsNone(self.student.name_change_requested_at)
+
+    def test_after_the_card_is_issued_a_name_change_waits_for_staff(self):
+        self._give_card()
+        response = self._save_profile(first_name='Someone', last_name='Else')
+        self.student.refresh_from_db()
+        self.assertEqual((self.student.first_name, self.student.last_name), ('Kekeletso', 'Khaka'))
+        self.assertEqual((self.student.pending_first_name, self.student.pending_last_name), ('Someone', 'Else'))
+        self.assertContains(response, 'Your new name will appear on your card once a staff member approves it')
+        self.assertContains(response, 'Name change waiting for approval')
+
+    def test_the_public_verification_page_keeps_the_card_name_until_approved(self):
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        self.client.logout()
+        response = self.client.get(reverse('verify_card_public', args=['TUT-NAME-0001']))
+        self.assertContains(response, 'Kekeletso')
+        self.assertNotContains(response, 'Someone')
+
+    def test_other_details_still_save_straight_away(self):
+        self._give_card()
+        self._save_profile(phone='0821234567')
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.phone, '0821234567')
+        self.assertIsNone(self.student.name_change_requested_at)
+
+    def test_a_new_photo_and_name_together_both_wait(self):
+        self._give_card()
+        self.student.profile_picture = photo('red', 'old.png')
+        self.student.save()
+        response = self._save_profile(first_name='Someone', profile_picture=photo('blue'))
+        self.assertContains(response, 'Your new photo and name will appear on your card once a staff member approves them')
+
+    def test_staff_approving_puts_the_new_name_on_the_card(self):
+        self._give_card()
+        self._save_profile(first_name='Keke', last_name='Khaka')
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse('report_review_requests')), 'Keke Khaka')
+        self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.first_name, 'Keke')
+        self.assertIsNone(self.student.name_change_requested_at)
+        self.assertEqual(self.student.pending_first_name, '')
+
+    def test_staff_rejecting_keeps_the_card_name(self):
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        self.client.force_login(self.staff)
+        self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'reject'})
+        self.student.refresh_from_db()
+        self.assertEqual((self.student.first_name, self.student.last_name), ('Kekeletso', 'Khaka'))
+        self.assertIsNone(self.student.name_change_requested_at)
+
+    def test_a_student_cannot_approve_their_own_name_change(self):
+        self._give_card()
+        self._save_profile(first_name='Someone')
+        self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.first_name, 'Kekeletso')
 
 
 class ReviewRequestAdminIsViewOnlyTests(TestCase):

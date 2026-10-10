@@ -867,29 +867,44 @@ def profile(request):
             messages.success(request, 'Password changed successfully!')
             return redirect('profile')
     elif request.method == 'POST':
+        # Read before binding the form: validating it writes the submitted
+        # values onto `user`.
         current_photo = user.profile_picture.name
+        current_name = (user.first_name, user.last_name)
         form = CustomUserChangeForm(request.POST, request.FILES, instance=user)
         password_form = StyledPasswordChangeForm(user)
         if form.is_valid():
             new_photo = 'profile_picture' in request.FILES
+            new_name = (form.cleaned_data['first_name'], form.cleaned_data['last_name'])
             has_card = StudentCard.objects.filter(user=user).exists()
+            updated = form.save(commit=False)
+            waiting = []
+
+            # Once the card is issued, its photo and name are what a guard
+            # checks the holder against, so changes to them wait for a staff
+            # member instead of appearing on the card straight away. Other
+            # details (phone and so on) save as normal.
             if new_photo and has_card and settings.REQUIRE_PHOTO_FOR_CARD:
-                # The card is already issued with the current photo, so a new
-                # one waits for a staff member instead of replacing it - the
-                # card's photo is what a guard checks the holder against.
-                updated = form.save(commit=False)
                 if updated.pending_profile_picture:
                     updated.pending_profile_picture.delete(save=False)
                 updated.pending_profile_picture = form.cleaned_data['profile_picture']
                 updated.profile_picture = current_photo
-                updated.save()
+                waiting.append('photo')
+            if new_name != current_name and has_card:
+                updated.pending_first_name, updated.pending_last_name = new_name
+                updated.name_change_requested_at = timezone.now()
+                updated.first_name, updated.last_name = current_name
+                waiting.append('name')
+            updated.save()
+
+            if waiting:
                 messages.success(
                     request,
-                    'Profile updated. Your new photo will appear on your card once a staff member approves it.'
+                    f"Profile updated. Your new {' and '.join(waiting)} will appear on your card "
+                    f"once a staff member approves {'them' if len(waiting) > 1 else 'it'}."
                 )
-                return redirect('dashboard')
-            form.save()
-            messages.success(request, 'Profile updated successfully!')
+            else:
+                messages.success(request, 'Profile updated successfully!')
             if new_photo and not has_card and user.is_verified:
                 # The photo may have been the last thing the card was waiting for.
                 _issue_first_card(request, user)
