@@ -3,7 +3,8 @@
     python manage.py purge_old_activity            # apply
     python manage.py purge_old_activity --dry-run  # only report what would change
 
-Run it daily from the server's scheduler, e.g. cron:
+The app runs it once a day by itself (cards/middleware.py); it can also be
+run by hand or from a scheduler, e.g. cron:
     0 2 * * *  cd /app && python manage.py purge_old_activity
 
 Page visits exist only for site statistics, so old rows are deleted outright.

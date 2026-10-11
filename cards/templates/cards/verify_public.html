@@ -42,8 +42,16 @@
                 </div>
             {% endif %}
 
-            {% if card.is_valid %}
-                <div class="student-card mb-3">
+            {% comment %}
+                A code that isn't genuine shows nothing about the card it names, and an
+                old code shows the card greyed out - neither may look like a valid ID.
+            {% endcomment %}
+            {% if code_status == 'invalid' %}
+            {% elif card.is_valid %}
+                {% if code_status == 'expired' %}
+                    <p class="text-danger fw-bold mb-1">Not valid as shown - old code:</p>
+                {% endif %}
+                <div class="student-card mb-3{% if code_status == 'expired' %} card-superseded{% endif %}">
                     <div class="student-card-content">
                         <div class="d-flex justify-content-between align-items-start mb-2">
                             <div>
@@ -64,7 +72,7 @@
                             {% else %}
                                 <div class="rounded-circle d-flex align-items-center justify-content-center"
                                      style="width: 56px; height: 56px; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.6);">
-                                    <i class="fas fa-user" style="font-size: 1.5rem; opacity: 0.85;"></i>
+                                    <i class="fas fa-user" style="font-size: 1.5rem; opacity: 0.85;" aria-hidden="true"></i>
                                 </div>
                             {% endif %}
                             <div>
@@ -98,7 +106,7 @@
                      scans it, not identical to a valid one. -->
                 <div class="card mb-3">
                     <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0"><i class="fas fa-times-circle"></i> Card {{ card.status|upper }}</h5>
+                        <h5 class="mb-0"><i class="fas fa-times-circle" aria-hidden="true"></i> Card {{ card.status|upper }}</h5>
                     </div>
                     <div class="card-body">
                         <div class="row mb-3">

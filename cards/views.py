@@ -413,61 +413,72 @@ def reissue_deleted_student(request, log_id):
     if request.method != 'POST':
         return HttpResponseNotAllowed(['POST'])
 
-    entry = get_object_or_404(DeletedStudentLog, pk=log_id)
+    # One transaction on a locked log entry: a double click, or two staff at
+    # once, can't both restore, and a failure part-way leaves nothing behind.
+    # The emails go out only after it commits.
+    with transaction.atomic():
+        entry = get_object_or_404(DeletedStudentLog.objects.select_for_update(), pk=log_id)
 
-    if entry.restored_at:
-        messages.warning(request, f'{entry.full_name} was already restored on {entry.restored_at:%Y-%m-%d %H:%M}.')
-        return redirect('report_deleted_students')
+        if entry.restored_at:
+            messages.warning(request, f'{entry.full_name} was already restored on {entry.restored_at:%Y-%m-%d %H:%M}.')
+            return redirect('report_deleted_students')
 
-    if User.objects.filter(Q(student_number=entry.student_number) | Q(email__iexact=entry.email)).exists():
-        messages.error(request, f'An account with student number {entry.student_number} or email {entry.email} already exists - cannot restore.')
-        return redirect('report_deleted_students')
+        if User.objects.filter(Q(student_number=entry.student_number) | Q(email__iexact=entry.email)).exists():
+            messages.error(request, f'An account with student number {entry.student_number} or email {entry.email} already exists - cannot restore.')
+            return redirect('report_deleted_students')
 
-    first_name, last_name = split_full_name(entry.full_name)
-    student = User.objects.create(
-        email=entry.email,
-        username=entry.email,
-        student_number=entry.student_number,
-        first_name=first_name,
-        last_name=last_name,
-        is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
-        registration_end_date=entry.registration_end_date,
-        # Restoring is a new verification event, not a resume - the student
-        # must reconfirm control of the mailbox again regardless of whether
-        # they'd confirmed it before being deleted.
-    )
-    # A random throwaway password, not set_unusable_password(): Django's
-    # PasswordResetForm.get_users() explicitly excludes accounts with an
-    # unusable password from ever receiving a reset email, which would
-    # silently strand the student with no way back in.
-    student.set_password(get_random_string(32))
-    student.save()
-
-    # The same card rule as every other path: the restored student has to
-    # reconfirm their mailbox first, so the card usually arrives then.
-    try:
-        if issue_card_if_allowed(student, request) == 'issued':
-            card = StudentCard.objects.filter(user=student).first()
-            CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
-    except Exception:
-        logger.exception("Card generation failed while restoring student %s", student.pk)
-        messages.warning(request, 'Account restored, but the card could not be generated. Use Reissue to try again.')
-
-    reset_form = PasswordResetForm(data={'email': student.email})
-    if reset_form.is_valid():
-        reset_form.save(
-            request=request,
-            email_template_name='accounts/password_reset_email.html',
-            subject_template_name='accounts/password_reset_subject.txt',
+        first_name, last_name = split_full_name(entry.full_name)
+        student = User(
+            email=entry.email,
+            username=entry.email,
+            student_number=entry.student_number,
+            first_name=first_name,
+            last_name=last_name,
+            is_verified=True,  # staff explicitly restoring the account is itself the manual-verification step
+            registration_end_date=entry.registration_end_date,
+            # Restoring is a new verification event, not a resume - the student
+            # must reconfirm control of the mailbox again regardless of whether
+            # they'd confirmed it before being deleted.
         )
+        # A random throwaway password, not set_unusable_password(): Django's
+        # PasswordResetForm.get_users() explicitly excludes accounts with an
+        # unusable password from ever receiving a reset email, which would
+        # silently strand the student with no way back in.
+        student.set_password(get_random_string(32))
+        student.save()
+
+        # The same card rule as every other path: the restored student has to
+        # reconfirm their mailbox first, so the card usually arrives then.
+        # A savepoint, so a failed card leaves the restored account in place.
+        try:
+            with transaction.atomic():
+                if issue_card_if_allowed(student, request) == 'issued':
+                    card = StudentCard.objects.filter(user=student).first()
+                    CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
+        except Exception:
+            logger.exception("Card generation failed while restoring student %s", student.pk)
+            messages.warning(request, 'Account restored, but the card could not be generated. Use Reissue to try again.')
+
+        entry.restored_at = timezone.now()
+        entry.save(update_fields=['restored_at'])
 
     try:
+        reset_form = PasswordResetForm(data={'email': student.email})
+        if reset_form.is_valid():
+            reset_form.save(
+                request=request,
+                email_template_name='accounts/password_reset_email.html',
+                subject_template_name='accounts/password_reset_subject.txt',
+            )
         send_confirmation_email(student, request)
-    except Exception as e:
-        messages.warning(request, f'Account restored, but the confirmation email failed to send: {str(e)}')
-
-    entry.restored_at = timezone.now()
-    entry.save()
+    except Exception:
+        logger.exception("Emails failed while restoring student %s", student.pk)
+        messages.warning(
+            request,
+            f'{student.get_full_name_display()} was restored, but the emails could not be sent. '
+            'They can use "Forgot password" on the login page to get back in.'
+        )
+        return redirect('report_deleted_students')
 
     messages.success(request, f'Restored {student.get_full_name_display()} with a new card - a set-password email and a new confirmation link have been sent to {student.email}.')
     return redirect('report_deleted_students')

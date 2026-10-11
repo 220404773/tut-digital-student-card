@@ -16,11 +16,11 @@
             <div class="card mb-4">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0"><i class="fas fa-user" aria-hidden="true"></i> Profile</h6>
-                    <div class="d-inline-flex gap-2">
-                        <a href="{% url 'admin:accounts_user_change' student.id %}" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center justify-content-center" style="width: 140px;">
+                    <div class="d-inline-flex flex-wrap justify-content-end gap-2">
+                        <a href="{% url 'admin:accounts_user_change' student.id %}" class="btn btn-sm btn-outline-primary d-inline-flex align-items-center justify-content-center" style="min-width: 120px;">
                             <i class="fas fa-edit me-1" aria-hidden="true"></i> Edit in Admin
                         </a>
-                        <a href="{% url 'admin:accounts_user_delete' student.id %}" class="btn btn-sm d-inline-flex align-items-center justify-content-center" style="width: 140px; background:#a4231c; color:#fff;">
+                        <a href="{% url 'admin:accounts_user_delete' student.id %}" class="btn btn-sm d-inline-flex align-items-center justify-content-center" style="min-width: 120px; background:#a4231c; color:#fff;">
                             <i class="fas fa-trash me-1" aria-hidden="true"></i> Delete
                         </a>
                     </div>
@@ -43,7 +43,7 @@
                         {% if student.is_verified %}
                             <span class="badge bg-success">Verified</span>
                         {% else %}
-                            <span class="badge bg-warning">Pending</span>
+                            <span class="badge text-bg-warning">Pending</span>
                         {% endif %}
                     </p>
                     <p class="mb-2">
@@ -51,7 +51,7 @@
                         {% if student.email_confirmed %}
                             <span class="badge bg-success">Confirmed</span>
                         {% else %}
-                            <span class="badge bg-warning">Pending</span>
+                            <span class="badge text-bg-warning">Pending</span>
                         {% endif %}
                     </p>
                     <p class="mb-0"><strong>Joined:</strong><br>{{ student.date_joined|date:"Y-m-d H:i" }}</p>

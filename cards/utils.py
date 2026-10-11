@@ -490,6 +490,14 @@ def hash_uploaded_file(file):
     return digest.hexdigest()
 
 
+# Limits on what the OCR step will open. The upload limit counts bytes, but a
+# small file can declare a huge image or thousands of PDF pages, and this runs
+# before login on a single worker - one such file could stall the whole site.
+# A proof of registration is one or two pages, well under these.
+MAX_PROOF_PIXELS = 25_000_000
+MAX_PROOF_PAGES = 3
+
+
 def process_registration_proof(file):
     """
     Process uploaded registration proof with OCR.
@@ -530,6 +538,14 @@ def process_registration_proof(file):
                     extracted_text = "PDF processed (OCR unavailable)"
         else:  # JPG, PNG
             if not OCR_AVAILABLE:
+                return None
+            # Opening reads only the header, so this check is cheap. (Closed
+            # straight away: Windows can't delete the temp file while open.)
+            with Image.open(temp_path) as header:
+                width, height = header.size
+            if width * height > MAX_PROOF_PIXELS:
+                logger.warning("Registration proof image too large to OCR (%sx%s)", width, height)
+                os.remove(temp_path)
                 return None
             image = Image.open(temp_path)
             extracted_text, ocr_engine_confidence = ocr_image_with_confidence(image)
@@ -935,7 +951,7 @@ def extract_pdf_text(pdf_path):
     try:
         document = fitz.open(pdf_path)
         extracted_pages = []
-        for page in document:
+        for page in document.pages(0, min(document.page_count, MAX_PROOF_PAGES)):
             page_text = page.get_text('text') or ''
             if page_text:
                 extracted_pages.append(page_text)
@@ -954,8 +970,12 @@ def render_pdf_pages(pdf_path):
     document = fitz.open(pdf_path)
     images = []
     try:
-        for page in document:
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        for page in document.pages(0, min(document.page_count, MAX_PROOF_PAGES)):
+            # Twice the page size reads well; a page declared enormous is
+            # rendered smaller instead, so it stays within MAX_PROOF_PIXELS.
+            area = max(page.rect.width * page.rect.height, 1)
+            zoom = min(2.0, (MAX_PROOF_PIXELS / area) ** 0.5)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
             image_mode = 'RGB' if pixmap.n < 4 else 'RGBA'
             image = Image.frombytes(image_mode, [pixmap.width, pixmap.height], pixmap.samples)
             images.append(image.convert('RGB'))

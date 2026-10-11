@@ -5,6 +5,7 @@ from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
 from django.views.decorators.http import require_http_methods
 from django_ratelimit.decorators import ratelimit
@@ -193,6 +194,10 @@ def signup(request):
             # Set when the account should go to a staff member rather than be
             # decided by the automated check alone (POPIA s71) - see ReviewRequest.
             review_reason = None
+            # Stay None if processing fails before OCR runs, so the metrics
+            # step below skips it instead of crashing after the user is saved.
+            ocr_result = None
+            ocr_end_time = None
 
             # Process the uploaded registration proof with OCR
             if 'registration_proof' in request.FILES:
@@ -249,11 +254,13 @@ def signup(request):
                         )
 
                     elif ocr_result and ocr_result.get('confidence_score', 0) >= 0.8:
+                        # These three rejections create no account, like an
+                        # invalid document above - the student fixes the
+                        # document and submits again. (Saving one here left
+                        # them with an account they weren't logged in to, and
+                        # a retry said the email was already registered.)
                         if not ocr_result.get('student_number') and not ocr_result.get('full_name'):
-                            user.is_verified = False
                             messages.warning(request, 'The uploaded file did not contain the required details.')
-                            user.save()
-                            delete_registration_proof(user)
                             return render(request, 'accounts/signup.html', {'form': form})
 
                         if not user.email and ocr_result.get('email'):
@@ -268,28 +275,22 @@ def signup(request):
                         # issued already-expired (see StudentCard.refresh_status()).
                         registration_end_date = parse_registration_end_date(ocr_result.get('period'))
                         if registration_period_has_expired(registration_end_date):
-                            user.is_verified = False
                             messages.warning(
                                 request,
                                 f"This proof of registration expired on {registration_end_date:%d %b %Y}. "
                                 f"Please upload your current ({timezone.now().year}) proof of registration."
                             )
-                            user.save()
-                            delete_registration_proof(user)
                             return render(request, 'accounts/signup.html', {'form': form})
                         if registration_period_is_implausible(registration_end_date):
                             # Almost certainly a misread year (e.g. 2027
                             # instead of 2026), not a real multi-year
                             # registration - reject the same way rather than
                             # trust a date this far out.
-                            user.is_verified = False
                             messages.warning(
                                 request,
                                 f"The registration end date on this document ({registration_end_date:%d %b %Y}) "
                                 f"doesn't look right - please upload a clearer copy of your current proof of registration."
                             )
-                            user.save()
-                            delete_registration_proof(user)
                             return render(request, 'accounts/signup.html', {'form': form})
 
                         # The form pre-fills the student number from the
@@ -546,7 +547,9 @@ def confirm_email(request, uidb64, token):
         if token_valid:
             user.email_confirmed = True
             user.email_confirmed_at = timezone.now()
-            user.save()
+            # Only these fields: writing the whole row could undo a staff
+            # change made since the user was loaded.
+            user.save(update_fields=['email_confirmed', 'email_confirmed_at'])
             messages.success(request, 'Your email address has been confirmed!')
             # Card issue is deferred to this point when confirmation is
             # required, so this is where a verified student finally gets one.
@@ -730,24 +733,35 @@ def reupload_proof(request):
         )
         return redirect('reupload_proof')
 
-    user = request.user
-    user.registration_end_date = registration_end_date
-    user.is_verified = True
-    user.save()
-    # Their own document now verifies them, so nothing is left for staff to decide.
-    ReviewRequest.objects.filter(user=user, status='pending').update(
-        status='approved', resolved_at=timezone.now(),
-        staff_note='Closed automatically: the student uploaded a document that verified.',
-    )
+    # OCR takes several seconds, so the card is checked again under a lock:
+    # one revoked by staff meanwhile must stay revoked.
+    with transaction.atomic():
+        student_card = StudentCard.objects.select_for_update().filter(user=request.user).first()
+        if student_card and student_card.status == 'revoked':
+            messages.error(
+                request,
+                'Your card has been revoked by an administrator and cannot be reactivated by uploading a document. '
+                'Please contact the student card office.'
+            )
+            return redirect('dashboard')
 
-    student_card = existing_card
-    if student_card:
-        student_card.expiry_date = registration_end_date
-        student_card.status = 'active'
-        student_card.save()
-        CardActivity.objects.create(student_card=student_card, activity_type='reactivated')
-        messages.success(request, 'Your digital student card has been reactivated!')
-    else:
+        user = request.user
+        user.registration_end_date = registration_end_date
+        user.is_verified = True
+        user.save(update_fields=['registration_end_date', 'is_verified'])
+        # Their own document now verifies them, so nothing is left for staff to decide.
+        ReviewRequest.objects.filter(user=user, status='pending').update(
+            status='approved', resolved_at=timezone.now(),
+            staff_note='Closed automatically: the student uploaded a document that verified.',
+        )
+
+        if student_card:
+            student_card.expiry_date = registration_end_date
+            student_card.status = 'active'
+            student_card.save(update_fields=['expiry_date', 'status'])
+            CardActivity.objects.create(student_card=student_card, activity_type='reactivated')
+            messages.success(request, 'Your digital student card has been reactivated!')
+    if not student_card:
         _issue_first_card(request, user)
 
     return redirect('dashboard')
@@ -867,63 +881,70 @@ def profile(request):
 
     if request.method == 'POST' and request.POST.get('form_type') == 'password':
         form = CustomUserChangeForm(instance=user, initial=_requested_name(user))
-        password_form = StyledPasswordChangeForm(user, request.POST)
-        if password_form.is_valid():
-            updated_user = password_form.save()
-            # Keep the user logged in - changing the password would
-            # otherwise invalidate their current session.
-            update_session_auth_hash(request, updated_user)
-            messages.success(request, 'Password changed successfully!')
-            return redirect('profile')
+        # Locked like the profile save below: saving the password writes the
+        # whole row back.
+        with transaction.atomic():
+            password_form = StyledPasswordChangeForm(User.objects.select_for_update().get(pk=user.pk), request.POST)
+            if password_form.is_valid():
+                updated_user = password_form.save()
+                # Keep the user logged in - changing the password would
+                # otherwise invalidate their current session.
+                update_session_auth_hash(request, updated_user)
+                messages.success(request, 'Password changed successfully!')
+                return redirect('profile')
     elif request.method == 'POST':
-        # Read before binding the form: validating it writes the submitted
-        # values onto `user`.
-        current_photo = user.profile_picture.name
-        current_name = (user.first_name, user.last_name)
-        form = CustomUserChangeForm(request.POST, request.FILES, instance=user)
-        password_form = StyledPasswordChangeForm(user)
-        if form.is_valid():
-            new_photo = 'profile_picture' in request.FILES
-            new_name = (form.cleaned_data['first_name'], form.cleaned_data['last_name'])
-            has_card = StudentCard.objects.filter(user=user).exists()
-            updated = form.save(commit=False)
-            waiting = []
+        # Locked for the whole save, like the staff approve/reject views:
+        # otherwise a staff decision made at the same moment could be undone
+        # by this save writing back the row as it was when the page loaded.
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=request.user.pk)
+            # Read before binding the form: validating it writes the submitted
+            # values onto `user`.
+            current_photo = user.profile_picture.name
+            current_name = (user.first_name, user.last_name)
+            form = CustomUserChangeForm(request.POST, request.FILES, instance=user)
+            password_form = StyledPasswordChangeForm(user)
+            if form.is_valid():
+                new_photo = 'profile_picture' in request.FILES
+                new_name = (form.cleaned_data['first_name'], form.cleaned_data['last_name'])
+                has_card = StudentCard.objects.filter(user=user).exists()
+                updated = form.save(commit=False)
+                waiting = []
 
-            # Once the card is issued, its photo and name are what a guard
-            # checks the holder against, so changes to them wait for a staff
-            # member instead of appearing on the card straight away. Other
-            # details (phone and so on) save as normal.
-            photo_locked = has_card and settings.REQUIRE_PHOTO_FOR_CARD
-            replaced_pending_photo = None
-            withdrawn = False
-            if photo_locked and new_photo:
-                replaced_pending_photo = updated.pending_profile_picture.name or None
-                updated.pending_profile_picture = form.cleaned_data['profile_picture']
-                # Face comparison only with the student's explicit consent
-                # (biometric data, POPIA s27); otherwise staff compare by eye.
-                updated.pending_photo_compare_consent = (
-                    settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
-                )
-                waiting.append('photo')
-            if photo_locked:
-                # Always the photo the card was issued with - a new upload is
-                # waiting above, and the form's "clear" option must not remove
-                # it either.
-                updated.profile_picture = current_photo
-            if has_card and new_name != current_name:
-                if (updated.pending_first_name, updated.pending_last_name) != new_name or not updated.name_change_requested_at:
-                    updated.name_change_requested_at = timezone.now()
-                updated.pending_first_name, updated.pending_last_name = new_name
-                updated.first_name, updated.last_name = current_name
-                waiting.append('name')
-            elif has_card and updated.name_change_requested_at:
-                # Back to the name on the card: the request is withdrawn, so
-                # staff can't approve a name the student no longer wants.
-                updated.pending_first_name = updated.pending_last_name = ''
-                updated.name_change_requested_at = None
-                withdrawn = True
+                # Once the card is issued, its photo and name are what a guard
+                # checks the holder against, so changes to them wait for a staff
+                # member instead of appearing on the card straight away. Other
+                # details (phone and so on) save as normal.
+                photo_locked = has_card and settings.REQUIRE_PHOTO_FOR_CARD
+                replaced_pending_photo = None
+                withdrawn = False
+                if photo_locked and new_photo:
+                    replaced_pending_photo = updated.pending_profile_picture.name or None
+                    updated.pending_profile_picture = form.cleaned_data['profile_picture']
+                    # Face comparison only with the student's explicit consent
+                    # (biometric data, POPIA s27); otherwise staff compare by eye.
+                    updated.pending_photo_compare_consent = (
+                        settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
+                    )
+                    waiting.append('photo')
+                if photo_locked:
+                    # Always the photo the card was issued with - a new upload is
+                    # waiting above, and the form's "clear" option must not remove
+                    # it either.
+                    updated.profile_picture = current_photo
+                if has_card and new_name != current_name:
+                    if (updated.pending_first_name, updated.pending_last_name) != new_name or not updated.name_change_requested_at:
+                        updated.name_change_requested_at = timezone.now()
+                    updated.pending_first_name, updated.pending_last_name = new_name
+                    updated.first_name, updated.last_name = current_name
+                    waiting.append('name')
+                elif has_card and updated.name_change_requested_at:
+                    # Back to the name on the card: the request is withdrawn, so
+                    # staff can't approve a name the student no longer wants.
+                    updated.pending_first_name = updated.pending_last_name = ''
+                    updated.name_change_requested_at = None
+                    withdrawn = True
 
-            with transaction.atomic():
                 updated.save()
                 if replaced_pending_photo:
                     # Only once the new one is saved - deleting first would
@@ -931,20 +952,20 @@ def profile(request):
                     storage = updated.pending_profile_picture.storage
                     transaction.on_commit(lambda: storage.delete(replaced_pending_photo))
 
-            if withdrawn:
-                messages.info(request, 'Your name change request was withdrawn - your card keeps your current name.')
-            if waiting:
-                messages.success(
-                    request,
-                    f"Profile updated. Your new {' and '.join(waiting)} will appear on your card "
-                    f"once a staff member approves {'them' if len(waiting) > 1 else 'it'}."
-                )
-            elif not withdrawn:
-                messages.success(request, 'Profile updated successfully!')
-            if new_photo and not has_card and user.is_verified:
-                # The photo may have been the last thing the card was waiting for.
-                _issue_first_card(request, user)
-            return redirect('dashboard')
+                if withdrawn:
+                    messages.info(request, 'Your name change request was withdrawn - your card keeps your current name.')
+                if waiting:
+                    messages.success(
+                        request,
+                        f"Profile updated. Your new {' and '.join(waiting)} will appear on your card "
+                        f"once a staff member approves {'them' if len(waiting) > 1 else 'it'}."
+                    )
+                elif not withdrawn:
+                    messages.success(request, 'Profile updated successfully!')
+                if new_photo and not has_card and user.is_verified:
+                    # The photo may have been the last thing the card was waiting for.
+                    _issue_first_card(request, user)
+                return redirect('dashboard')
     else:
         form = CustomUserChangeForm(instance=user, initial=_requested_name(user))
         password_form = StyledPasswordChangeForm(user)
@@ -968,40 +989,18 @@ def profile(request):
     return render(request, 'accounts/profile.html', context)
 
 
+@staff_member_required(login_url='login')
 def user_search(request):
-    """
-    Search for verified students.
-    """
+    """Old address of the student search. It showed every student's email,
+    student number and card number, and since the email is the student
+    number @tut4life.ac.za, students could look each other up - so it is
+    staff-only now and forwards to the staff directory."""
     query = request.GET.get('q', '')
-    results = []
-    
-    if query:
-        results = User.objects.filter(
-            is_verified=True
-        ).filter(
-            models.Q(first_name__icontains=query) |
-            models.Q(last_name__icontains=query) |
-            models.Q(student_number__icontains=query) |
-            models.Q(email__icontains=query)
-        )
-    
-    return render(request, 'accounts/search.html', {
-        'query': query,
-        'results': results,
-    })
+    url = reverse('staff_student_list')
+    return redirect(f'{url}?{urlencode({"q": query})}' if query else url)
 
 
+@staff_member_required(login_url='login')
 def student_detail(request, student_id):
-    """
-    View a student's public profile.
-    """
-    student = get_object_or_404(User, pk=student_id, is_verified=True)
-    try:
-        student_card = StudentCard.objects.get(user=student)
-    except StudentCard.DoesNotExist:
-        student_card = None
-    
-    return render(request, 'accounts/student_detail.html', {
-        'student': student,
-        'student_card': student_card,
-    })
+    """Old address of a student's profile - staff-only, see user_search."""
+    return redirect('staff_student_detail', user_id=student_id)

@@ -1,48 +1,5 @@
-/* TUT Student Card - Simple Styling */
-
-:root {
-    --tut-blue: #005DAA;
-    --tut-gold: #FFCD00;
-}
-
-/* Basic Styles */
-body { font-family: 'Segoe UI', sans-serif; background-color: #f8f9fa; }
-
-/* Student Card Display */
-.student-card {
-    animation: slideIn 0.5s ease-out;
-}
-
-@keyframes slideIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* Forms */
-.form-control:focus, .form-select:focus {
-    border-color: var(--tut-blue);
-    box-shadow: 0 0 0 0.2rem rgba(0, 93, 170, 0.25);
-}
-
-/* Buttons */
-.btn { transition: all 0.3s ease; }
-.btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-
-/* Cards */
-.card { transition: all 0.3s ease; }
-.card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-
-/* Responsive */
-@media (max-width: 768px) {
-    .page-header h1 { font-size: 1.75rem; }
-    .student-card { padding: 20px !important; min-height: 250px !important; }
-}
-
-/* Print Styles */
-@media print {
-    .navbar, footer, .btn-group, .form-control { display: none; }
-    .student-card { box-shadow: none; border: 2px solid var(--tut-blue); }
-}
+/* Styles shared across pages, loaded by templates/base.html after Bootstrap.
+   (The page colours and fonts are set in base.html itself.) */
 
 /* Live card (static/js/live-card.js): a moving shine and a ticking clock,
    so a screenshot of someone else's card looks frozen. */
@@ -96,3 +53,7 @@ body { font-family: 'Segoe UI', sans-serif; background-color: #f8f9fa; }
 @media (prefers-reduced-motion: reduce) {
     .live-card-shimmer, .live-dot { animation: none; }
 }
+
+/* Verification page: a card shown from an old (screenshotted) QR code is
+   greyed out so it can't be mistaken for a valid ID. */
+.card-superseded { filter: grayscale(1); opacity: 0.55; }

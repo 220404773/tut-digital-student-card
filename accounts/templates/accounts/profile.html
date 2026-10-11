@@ -146,26 +146,27 @@
                         {% if user.is_verified %}
                             <span class="badge bg-success">Verified</span>
                         {% else %}
-                            <span class="badge bg-warning">Pending</span>
+                            <span class="badge text-bg-warning">Pending</span>
                         {% endif %}
                     </p>
-                    <p class="mb-1">
+                    {# A div, not a p: the Resend form can't sit inside a paragraph. #}
+                    <div class="mb-1">
                         <strong>Email Confirmed:</strong>
                         {% if user.email_confirmed %}
                             <span class="badge bg-success">Confirmed</span>
                         {% else %}
-                            <span class="badge bg-warning">Pending</span>
+                            <span class="badge text-bg-warning">Pending</span>
                             <form method="post" action="{% url 'resend_confirmation' %}" class="d-inline">
                                 {% csrf_token %}
                                 <button type="submit" class="btn btn-sm btn-link p-0 ms-1">Resend</button>
                             </form>
                         {% endif %}
-                    </p>
+                    </div>
 
                     {% if student_card %}
                         <p class="mb-1">
                             <strong>Card Status:</strong>
-                            <span class="badge bg-info">{{ student_card.status|upper }}</span>
+                            <span class="badge text-bg-info">{{ student_card.status|upper }}</span>
                         </p>
                         <p class="mb-0">
                             <strong>Card Valid Until:</strong>

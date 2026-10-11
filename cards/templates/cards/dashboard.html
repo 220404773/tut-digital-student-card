@@ -256,7 +256,7 @@
                         {% if user.is_verified %}
                             <span class="badge bg-success">Verified</span>
                         {% else %}
-                            <span class="badge bg-warning">Pending</span>
+                            <span class="badge text-bg-warning">Pending</span>
                         {% endif %}
                     </p>
                     <a href="{% url 'profile' %}" class="btn btn-sm btn-outline-primary w-100">
@@ -265,24 +265,21 @@
                 </div>
             </div>
 
+            {% if student_card %}
             <div class="card">
                 <div class="card-header py-2">
                     <h6 class="mb-0"><i class="fas fa-link"></i> Quick Links</h6>
                 </div>
                 <div class="card-body py-2">
-                    {% if student_card %}
-                        <a href="{% url 'view_card' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
-                            <i class="fas fa-id-card"></i> View Card
-                        </a>
-                        <a href="{% url 'download_qr' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
-                            <i class="fas fa-qrcode"></i> Download QR Code
-                        </a>
-                    {% endif %}
-                    <a href="{% url 'user_search' %}" class="btn btn-sm btn-outline-primary w-100">
-                        <i class="fas fa-search"></i> Find Students
+                    <a href="{% url 'view_card' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
+                        <i class="fas fa-id-card"></i> View Card
+                    </a>
+                    <a href="{% url 'download_qr' %}" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="fas fa-qrcode"></i> Download QR Code
                     </a>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 </div>

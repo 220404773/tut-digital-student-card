@@ -4,7 +4,7 @@ from django.http import HttpResponse
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from django.views.generic import TemplateView
+from django.views.generic import RedirectView, TemplateView
 
 
 def service_worker(request):
@@ -18,6 +18,9 @@ def service_worker(request):
 
 
 urlpatterns = [
+    # The admin's own sign-in has no lockout or rate limit, so staff sign in
+    # through the app's login page, which has both (accounts/login_guard.py).
+    path('admin/login/', RedirectView.as_view(pattern_name='login')),
     path('admin/', admin.site.urls),
     path('accounts/', include('accounts.urls')),
     path('cards/', include('cards.urls')),
