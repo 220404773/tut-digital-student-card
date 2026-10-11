@@ -22,12 +22,12 @@
         <table class="table table-sm align-middle">
             <thead class="table-light">
                 <tr>
-                    <th>Student</th>
-                    <th>Student Number</th>
-                    <th>Reason</th>
-                    <th>Student's message</th>
-                    <th>Requested</th>
-                    <th>Decision</th>
+                    <th scope="col">Student</th>
+                    <th scope="col">Student Number</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Student's message</th>
+                    <th scope="col">Requested</th>
+                    <th scope="col">Decision</th>
                 </tr>
             </thead>
             <tbody>
@@ -53,8 +53,10 @@
                                     student by accident.
                                 {% endcomment %}
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                        aria-label="Approve the review for {{ review.user.get_full_name_display }}"
                                         data-confirm="Approve {{ review.user.get_full_name_display }}? They will be verified, and their card issued once their email is confirmed and they have a photo.">Approve</button>
                                 <button type="submit" name="action" value="decline" class="btn btn-sm btn-outline-danger"
+                                        aria-label="Decline the review for {{ review.user.get_full_name_display }}"
                                         data-confirm="Decline the review for {{ review.user.get_full_name_display }}? They will see your note on their dashboard.">Decline</button>
                             </form>
                         </td>
@@ -77,12 +79,12 @@
         <table class="table table-sm align-middle">
             <thead class="table-light">
                 <tr>
-                    <th>Student</th>
-                    <th>Student Number</th>
-                    <th>Current photo</th>
-                    <th>New photo</th>
-                    <th>Automatic comparison</th>
-                    <th>Decision</th>
+                    <th scope="col">Student</th>
+                    <th scope="col">Student Number</th>
+                    <th scope="col">Current photo</th>
+                    <th scope="col">New photo</th>
+                    <th scope="col">Automatic comparison</th>
+                    <th scope="col">Decision</th>
                 </tr>
             </thead>
             <tbody>
@@ -124,8 +126,10 @@
                             <form method="post" action="{% url 'resolve_photo_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                        aria-label="Approve the new photo for {{ student.get_full_name_display }}"
                                         data-confirm="Approve the new photo for {{ student.get_full_name_display }}? It will replace the photo on their card.">Approve</button>
                                 <button type="submit" name="action" value="reject" class="btn btn-sm btn-outline-danger"
+                                        aria-label="Reject the new photo for {{ student.get_full_name_display }}"
                                         data-confirm="Reject the new photo for {{ student.get_full_name_display }}? Their card keeps the current photo.">Reject</button>
                             </form>
                         </td>
@@ -148,11 +152,11 @@
         <table class="table table-sm align-middle">
             <thead class="table-light">
                 <tr>
-                    <th>Student Number</th>
-                    <th>Name on the card</th>
-                    <th>Requested name</th>
-                    <th>Requested</th>
-                    <th>Decision</th>
+                    <th scope="col">Student Number</th>
+                    <th scope="col">Name on the card</th>
+                    <th scope="col">Requested name</th>
+                    <th scope="col">Requested</th>
+                    <th scope="col">Decision</th>
                 </tr>
             </thead>
             <tbody>
@@ -166,8 +170,10 @@
                             <form method="post" action="{% url 'resolve_name_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                        aria-label="Approve the name change for {{ student.get_full_name_display }}"
                                         data-confirm="Change the name on this card to {{ student.pending_first_name }} {{ student.pending_last_name }}?">Approve</button>
                                 <button type="submit" name="action" value="reject" class="btn btn-sm btn-outline-danger"
+                                        aria-label="Reject the name change for {{ student.get_full_name_display }}"
                                         data-confirm="Reject this name change? The card keeps {{ student.get_full_name_display }}.">Reject</button>
                             </form>
                         </td>
@@ -186,12 +192,12 @@
         <table class="table table-sm">
             <thead class="table-light">
                 <tr>
-                    <th>Student</th>
-                    <th>Reason</th>
-                    <th>Decision</th>
-                    <th>Note</th>
-                    <th>By</th>
-                    <th>When</th>
+                    <th scope="col">Student</th>
+                    <th scope="col">Reason</th>
+                    <th scope="col">Decision</th>
+                    <th scope="col">Note</th>
+                    <th scope="col">By</th>
+                    <th scope="col">When</th>
                 </tr>
             </thead>
             <tbody>

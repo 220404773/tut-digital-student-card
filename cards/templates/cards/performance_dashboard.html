@@ -13,13 +13,13 @@
 <div class="container my-5">
     {% if not user.is_staff %}
         <div class="alert alert-danger">
-            <i class="fas fa-lock"></i> You do not have permission to access this page.
+            <i class="fas fa-lock" aria-hidden="true"></i> You do not have permission to access this page.
         </div>
     {% else %}
         <!-- Overview Metrics Section -->
         <div class="row mb-5">
             <div class="col-md-12">
-                <h2 class="mb-4"><i class="fas fa-chart-pie"></i> Overview</h2>
+                <h2 class="mb-4"><i class="fas fa-chart-pie" aria-hidden="true"></i> Overview</h2>
             </div>
 
             <div class="col-md-3 mb-3">
@@ -140,164 +140,15 @@
 
             <div class="col-md-12">
                 <a href="{% url 'staff_student_list' %}" class="btn btn-outline-primary btn-sm">
-                    <i class="fas fa-users"></i> View All Students
+                    <i class="fas fa-users" aria-hidden="true"></i> View All Students
                 </a>
             </div>
-        </div>
-
-        <!-- Signup Metrics Section -->
-        <div class="row mb-5">
-            <div class="col-md-12">
-                <h2 class="mb-4"><i class="fas fa-user-check"></i> Signup Performance</h2>
-            </div>
-
-            {% if signup_stats.total_signups %}
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card bg-primary text-white">
-                            <div class="card-body">
-                                <h6 class="card-title">Total Signups</h6>
-                                <h3>{{ signup_stats.total_signups }}</h3>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card bg-info text-dark">
-                            <div class="card-body">
-                                <h6 class="card-title">Avg Signup Time</h6>
-                                <h3>{{ signup_stats.avg_signup_time|floatformat:2 }}s</h3>
-                                <small>Min: {{ signup_stats.min_signup_time|floatformat:2 }}s | Max: {{ signup_stats.max_signup_time|floatformat:2 }}s</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card bg-success text-white">
-                            <div class="card-body">
-                                <h6 class="card-title">Avg File Size</h6>
-                                <h3>{{ signup_stats.avg_file_size|floatformat:2 }} MB</h3>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_signups' %}" class="tile-link">
-                        <div class="card {% if signup_stats.verification_rate >= 80 %}bg-success text-white{% elif signup_stats.verification_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
-                            <div class="card-body">
-                                <h6 class="card-title">Verification Rate</h6>
-                                <h3>{{ signup_stats.verification_rate|floatformat:1 }}%</h3>
-                                <small>{{ signup_stats.verified_count }}/{{ signup_stats.total_signups }} auto-verified</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <!-- Recent Signups -->
-                <div class="col-md-12 mt-4">
-                    <h5 class="mb-3">Recent Signups</h5>
-                    <div class="table-responsive">
-                        <table class="table table-hover table-sm">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Email</th>
-                                    <th>Signup Duration</th>
-                                    <th>File Size</th>
-                                    <th>Verified</th>
-                                    <th>Timestamp</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for signup in recent_signups %}
-                                    <tr>
-                                        <td><strong>{{ signup.user.email }}</strong></td>
-                                        <td>{{ signup.signup_duration_seconds|floatformat:2 }}s</td>
-                                        <td>{% if signup.file_upload_size_mb %}{{ signup.file_upload_size_mb|floatformat:2 }} MB{% else %}-{% endif %}</td>
-                                        <td>
-                                            {% if signup.user.is_verified %}
-                                                <span class="badge bg-success">Verified</span>
-                                            {% else %}
-                                                <span class="badge bg-warning text-dark">Pending</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
-                                    </tr>
-                                {% empty %}
-                                    <tr>
-                                        <td colspan="5" class="text-center text-muted">No signup data yet</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            {% else %}
-                <div class="col-md-12">
-                    <div class="alert alert-info">No signup data available yet</div>
-                </div>
-            {% endif %}
-        </div>
-
-        <!-- Email Confirmation Metrics Section -->
-        <div class="row mb-5">
-            <div class="col-md-12">
-                <h2 class="mb-4"><i class="fas fa-envelope-circle-check"></i> Email Confirmation</h2>
-            </div>
-
-            {% if email_confirmation_stats.total_students %}
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
-                        <div class="card {% if email_confirmation_stats.confirmation_rate >= 80 %}bg-success text-white{% elif email_confirmation_stats.confirmation_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
-                            <div class="card-body">
-                                <h6 class="card-title">Email Confirmation Rate</h6>
-                                <h3>{{ email_confirmation_stats.confirmation_rate|floatformat:1 }}%</h3>
-                                <small>{{ email_confirmation_stats.confirmed_count }}/{{ email_confirmation_stats.total_students }} confirmed</small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
-                        <div class="card bg-info text-dark">
-                            <div class="card-body">
-                                <h6 class="card-title">Avg Time to Confirm</h6>
-                                <h3>{% if email_confirmation_stats.avg_confirmation_time %}{{ email_confirmation_stats.avg_confirmation_time }}{% else %}-{% endif %}</h3>
-                                <small>
-                                    Min: {% if email_confirmation_stats.min_confirmation_time %}{{ email_confirmation_stats.min_confirmation_time }}{% else %}-{% endif %}
-                                    | Max: {% if email_confirmation_stats.max_confirmation_time %}{{ email_confirmation_stats.max_confirmation_time }}{% else %}-{% endif %}
-                                </small>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-md-3 mb-3">
-                    <a href="{% url 'report_email_confirmation' %}?filter=unconfirmed" class="tile-link">
-                        <div class="card bg-secondary text-white">
-                            <div class="card-body">
-                                <h6 class="card-title">Awaiting Confirmation</h6>
-                                <h3>{{ email_confirmation_stats.awaiting_count }}</h3>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-            {% else %}
-                <div class="col-md-12">
-                    <div class="alert alert-info">No student data available yet</div>
-                </div>
-            {% endif %}
         </div>
 
         <!-- OCR Metrics Section -->
         <div class="row mb-5">
             <div class="col-md-12">
-                <h2 class="mb-4"><i class="fas fa-file-invoice"></i> OCR Performance</h2>
+                <h2 class="mb-4"><i class="fas fa-file-invoice" aria-hidden="true"></i> OCR Performance</h2>
             </div>
 
             {% if ocr_stats.total_ocr %}
@@ -355,7 +206,7 @@
                             <a href="{% url 'report_ocr' %}?filter=accurate" class="tile-link">
                                 <div class="card border-success">
                                     <div class="card-body text-center">
-                                        <h5 class="text-success"><i class="fas fa-check-circle"></i> Accurate</h5>
+                                        <h5 class="text-success"><i class="fas fa-check-circle" aria-hidden="true"></i> Accurate</h5>
                                         <h3>{{ ocr_stats.accurate_count }}</h3>
                                     </div>
                                 </div>
@@ -365,8 +216,9 @@
                             <a href="{% url 'report_ocr' %}?filter=needs_review" class="tile-link">
                                 <div class="card border-warning">
                                     <div class="card-body text-center">
-                                        <h5 class="text-warning-emphasis"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Needs Review</h5>
+                                        <h5 class="text-warning-emphasis"><i class="fas fa-exclamation-circle" aria-hidden="true"></i> Flagged for review (all time)</h5>
                                         <h3>{{ ocr_stats.needs_review_count }}</h3>
+                                        <small class="text-muted">Each one opened a review request - the open ones are under Pending Reviews</small>
                                     </div>
                                 </div>
                             </a>
@@ -375,7 +227,7 @@
                             <a href="{% url 'report_ocr' %}?filter=inaccurate" class="tile-link">
                                 <div class="card border-danger">
                                     <div class="card-body text-center">
-                                        <h5 class="text-danger"><i class="fas fa-times-circle"></i> Inaccurate</h5>
+                                        <h5 class="text-danger"><i class="fas fa-times-circle" aria-hidden="true"></i> Inaccurate</h5>
                                         <h3>{{ ocr_stats.inaccurate_count }}</h3>
                                     </div>
                                 </div>
@@ -391,11 +243,11 @@
                         <table class="table table-hover table-sm">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Email</th>
-                                    <th>Confidence</th>
-                                    <th>Duration</th>
-                                    <th>Status</th>
-                                    <th>Timestamp</th>
+                                    <th scope="col">Email</th>
+                                    <th scope="col">Confidence</th>
+                                    <th scope="col">Duration</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Timestamp</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -414,11 +266,11 @@
                                         <td>{{ ocr.ocr_duration_seconds|floatformat:2 }}s</td>
                                         <td>
                                             {% if ocr.is_accurate %}
-                                                <span class="badge bg-success"><i class="fas fa-check"></i> Accurate</span>
+                                                <span class="badge bg-success"><i class="fas fa-check" aria-hidden="true"></i> Accurate</span>
                                             {% elif ocr.manual_correction_required %}
-                                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation"></i> Review</span>
+                                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation" aria-hidden="true"></i> Review</span>
                                             {% else %}
-                                                <span class="badge bg-danger"><i class="fas fa-times"></i> Inaccurate</span>
+                                                <span class="badge bg-danger"><i class="fas fa-times" aria-hidden="true"></i> Inaccurate</span>
                                             {% endif %}
                                         </td>
                                         <td>{{ ocr.created_at|date:"Y-m-d H:i:s" }}</td>
@@ -435,6 +287,155 @@
             {% else %}
                 <div class="col-md-12">
                     <div class="alert alert-info">No OCR data available yet</div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Signup Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-user-check" aria-hidden="true"></i> Signup Performance</h2>
+            </div>
+
+            {% if signup_stats.total_signups %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Total Signups</h6>
+                                <h3>{{ signup_stats.total_signups }}</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-info text-dark">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Signup Time</h6>
+                                <h3>{{ signup_stats.avg_signup_time|floatformat:2 }}s</h3>
+                                <small>Min: {{ signup_stats.min_signup_time|floatformat:2 }}s | Max: {{ signup_stats.max_signup_time|floatformat:2 }}s</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg File Size</h6>
+                                <h3>{{ signup_stats.avg_file_size|floatformat:2 }} MB</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_signups' %}" class="tile-link">
+                        <div class="card {% if signup_stats.verification_rate >= 80 %}bg-success text-white{% elif signup_stats.verification_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
+                            <div class="card-body">
+                                <h6 class="card-title">Verification Rate</h6>
+                                <h3>{{ signup_stats.verification_rate|floatformat:1 }}%</h3>
+                                <small>{{ signup_stats.verified_count }}/{{ signup_stats.total_signups }} auto-verified</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Recent Signups -->
+                <div class="col-md-12 mt-4">
+                    <h5 class="mb-3">Recent Signups</h5>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Email</th>
+                                    <th scope="col">Signup Duration</th>
+                                    <th scope="col">File Size</th>
+                                    <th scope="col">Verified</th>
+                                    <th scope="col">Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for signup in recent_signups %}
+                                    <tr>
+                                        <td><strong>{{ signup.user.email }}</strong></td>
+                                        <td>{{ signup.signup_duration_seconds|floatformat:2 }}s</td>
+                                        <td>{% if signup.file_upload_size_mb %}{{ signup.file_upload_size_mb|floatformat:2 }} MB{% else %}-{% endif %}</td>
+                                        <td>
+                                            {% if signup.user.is_verified %}
+                                                <span class="badge bg-success">Verified</span>
+                                            {% else %}
+                                                <span class="badge bg-warning text-dark">Pending</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="5" class="text-center text-muted">No signup data yet</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No signup data available yet</div>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- Email Confirmation Metrics Section -->
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-4"><i class="fas fa-envelope-circle-check" aria-hidden="true"></i> Email Confirmation</h2>
+            </div>
+
+            {% if email_confirmation_stats.total_students %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
+                        <div class="card {% if email_confirmation_stats.confirmation_rate >= 80 %}bg-success text-white{% elif email_confirmation_stats.confirmation_rate >= 50 %}bg-warning text-dark{% else %}bg-danger text-white{% endif %}">
+                            <div class="card-body">
+                                <h6 class="card-title">Email Confirmation Rate</h6>
+                                <h3>{{ email_confirmation_stats.confirmation_rate|floatformat:1 }}%</h3>
+                                <small>{{ email_confirmation_stats.confirmed_count }}/{{ email_confirmation_stats.total_students }} confirmed</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=confirmed" class="tile-link">
+                        <div class="card bg-info text-dark">
+                            <div class="card-body">
+                                <h6 class="card-title">Avg Time to Confirm</h6>
+                                <h3>{% if email_confirmation_stats.avg_confirmation_time %}{{ email_confirmation_stats.avg_confirmation_time }}{% else %}-{% endif %}</h3>
+                                <small>
+                                    Min: {% if email_confirmation_stats.min_confirmation_time %}{{ email_confirmation_stats.min_confirmation_time }}{% else %}-{% endif %}
+                                    | Max: {% if email_confirmation_stats.max_confirmation_time %}{{ email_confirmation_stats.max_confirmation_time }}{% else %}-{% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_email_confirmation' %}?filter=unconfirmed" class="tile-link">
+                        <div class="card bg-secondary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Awaiting Confirmation</h6>
+                                <h3>{{ email_confirmation_stats.awaiting_count }}</h3>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No student data available yet</div>
                 </div>
             {% endif %}
         </div>

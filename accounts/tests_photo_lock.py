@@ -9,6 +9,7 @@ import tempfile
 
 from django.contrib.admin.sites import site
 from django.core.cache import cache
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -151,6 +152,58 @@ class PhotoLockTests(TestCase):
         self.student.refresh_from_db()
         self.assertEqual(self.student.profile_picture.name, original)
 
+    def test_the_clear_option_cannot_remove_the_card_photo(self):
+        """The profile form's file field has a "clear" checkbox; posting it
+        must not take the photo off an issued card."""
+        original = self._student_with_card()
+        self.client.post(reverse('profile'), profile_form(**{'profile_picture-clear': 'on'}))
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.profile_picture.name, original)
+
+    def test_a_replaced_waiting_photo_is_deleted_once_the_new_one_is_saved(self):
+        self._student_with_card()
+        self._upload_photo('blue')
+        self.student.refresh_from_db()
+        first_pending = self.student.pending_profile_picture.name
+        with self.captureOnCommitCallbacks(execute=True):
+            self._upload_photo('green')
+        self.assertFalse(default_storage.exists(first_pending))
+
+    def test_approving_deletes_the_old_card_photo_after_saving(self):
+        original = self._student_with_card()
+        self._upload_photo('blue')
+        self.client.force_login(self.staff)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('resolve_photo_change', args=[self.student.pk]), {'action': 'approve'})
+        self.student.refresh_from_db()
+        self.assertFalse(default_storage.exists(original))
+        self.assertTrue(default_storage.exists(self.student.profile_picture.name))
+
+    def test_rejecting_deletes_the_waiting_photo_after_saving(self):
+        original = self._student_with_card()
+        self._upload_photo('blue')
+        self.student.refresh_from_db()
+        pending = self.student.pending_profile_picture.name
+        self.client.force_login(self.staff)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('resolve_photo_change', args=[self.student.pk]), {'action': 'reject'})
+        self.assertFalse(default_storage.exists(pending))
+        self.assertTrue(default_storage.exists(original))
+
+    def test_a_photo_change_decided_twice_is_only_acted_on_once(self):
+        """Two staff members on the same page: the second sees it decided."""
+        self._student_with_card()
+        self._upload_photo('blue')
+        self.client.force_login(self.staff)
+        url = reverse('resolve_photo_change', args=[self.student.pk])
+        self.client.post(url, {'action': 'approve'})
+        self.student.refresh_from_db()
+        approved = self.student.profile_picture.name
+        response = self.client.post(url, {'action': 'reject'}, follow=True)
+        self.assertContains(response, 'already been decided')
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.profile_picture.name, approved)
+
     @override_settings(REQUIRE_PHOTO_FOR_CARD=False)
     def test_the_lock_can_be_switched_off_for_an_offline_demo(self):
         self.assertEqual(issue_card_if_allowed(self.student), 'issued')
@@ -242,6 +295,48 @@ class NameLockTests(TestCase):
         self._give_card()
         self._save_profile(first_name='Someone')
         self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.first_name, 'Kekeletso')
+
+    def test_the_profile_page_shows_the_requested_name_while_it_waits(self):
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        response = self.client.get(reverse('profile'))
+        self.assertContains(response, 'value="Someone"')
+        self.assertContains(response, 'value="Else"')
+
+    def test_saving_another_detail_keeps_the_waiting_name_change(self):
+        """The page posts the requested name back, so the request stays -
+        with its original date, so it keeps its place in the staff queue."""
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        self.student.refresh_from_db()
+        requested_at = self.student.name_change_requested_at
+        self._save_profile(first_name='Someone', last_name='Else', phone='0821234567')
+        self.student.refresh_from_db()
+        self.assertEqual((self.student.pending_first_name, self.student.pending_last_name), ('Someone', 'Else'))
+        self.assertEqual(self.student.name_change_requested_at, requested_at)
+        self.assertEqual(self.student.phone, '0821234567')
+
+    def test_going_back_to_the_card_name_withdraws_the_request(self):
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        response = self._save_profile(first_name='Kekeletso', last_name='Khaka')
+        self.student.refresh_from_db()
+        self.assertIsNone(self.student.name_change_requested_at)
+        self.assertEqual((self.student.pending_first_name, self.student.pending_last_name), ('', ''))
+        self.assertContains(response, 'Your name change request was withdrawn')
+        self.client.force_login(self.staff)
+        self.assertNotContains(self.client.get(reverse('report_review_requests')), 'Someone Else')
+
+    def test_a_name_change_decided_twice_is_only_acted_on_once(self):
+        self._give_card()
+        self._save_profile(first_name='Someone', last_name='Else')
+        self.client.force_login(self.staff)
+        url = reverse('resolve_name_change', args=[self.student.pk])
+        self.client.post(url, {'action': 'reject'})
+        response = self.client.post(url, {'action': 'approve'}, follow=True)
+        self.assertContains(response, 'already been decided')
         self.student.refresh_from_db()
         self.assertEqual(self.student.first_name, 'Kekeletso')
 

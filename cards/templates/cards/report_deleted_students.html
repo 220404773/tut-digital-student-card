@@ -15,15 +15,15 @@
         <table class="table table-hover table-sm">
             <thead class="table-light">
                 <tr>
-                    <th>Full Name</th>
-                    <th>Student Number</th>
-                    <th>Email</th>
-                    <th>Was Verified</th>
-                    <th>Had Card</th>
-                    <th>Card Number</th>
-                    <th>Deleted By</th>
-                    <th>Deleted At</th>
-                    <th></th>
+                    <th scope="col">Full Name</th>
+                    <th scope="col">Student Number</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Was Verified</th>
+                    <th scope="col">Had Card</th>
+                    <th scope="col">Card Number</th>
+                    <th scope="col">Deleted By</th>
+                    <th scope="col">Deleted At</th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -50,7 +50,8 @@
                                 <form method="post" action="{% url 'reissue_deleted_student' entry.pk %}"
                                       data-confirm="Recreate {{ entry.full_name }}'s account with a new card, and email them a link to set a new password?">
                                     {% csrf_token %}
-                                    <button type="submit" class="btn btn-sm" style="background:#146c43; color:#fff;">Reissue</button>
+                                    <button type="submit" class="btn btn-sm" style="background:#146c43; color:#fff;"
+                                            aria-label="Reissue an account for {{ entry.full_name }}">Reissue</button>
                                 </form>
                             {% endif %}
                         </td>
@@ -65,7 +66,7 @@
     </div>
 
     <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Reports
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Reports
     </a>
 </div>
 {% endblock %}

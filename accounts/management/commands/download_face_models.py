@@ -12,10 +12,15 @@ from pathlib import Path
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from accounts.face_checks import COMPARISON_MODEL, MODEL_SHA256
+
+MAX_DOWNLOAD_BYTES = 60 * 1024 * 1024
+
+# The checksum lives in face_checks.py, which also checks it before loading.
 MODELS = {
-    'face_recognition_sface_2021dec.onnx': (
+    COMPARISON_MODEL: (
         'https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx',
-        '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79',
+        MODEL_SHA256[COMPARISON_MODEL],
     ),
 }
 
@@ -32,9 +37,16 @@ class Command(BaseCommand):
                 self.stdout.write(f'{name}: already present')
                 continue
             with urllib.request.urlopen(url, timeout=120) as response:
-                data = response.read()
+                # The model is 39 MB: anything past 60 MB is not the right file.
+                data = response.read(MAX_DOWNLOAD_BYTES + 1)
+            if len(data) > MAX_DOWNLOAD_BYTES:
+                raise CommandError(f'{name}: download larger than expected - not saved')
             actual = hashlib.sha256(data).hexdigest()
             if actual != expected:
                 raise CommandError(f'{name}: checksum mismatch (got {actual}) - not saved')
-            target.write_bytes(data)
+            # Written to a temporary name and then renamed, so an interrupted
+            # write never leaves a half-written model under the real name.
+            partial = target.with_suffix('.partial')
+            partial.write_bytes(data)
+            partial.replace(target)
             self.stdout.write(self.style.SUCCESS(f'{name}: downloaded and verified'))

@@ -65,6 +65,25 @@ class PhotoProblemsTests(SimpleTestCase):
         with override_settings(FACE_MODELS_DIR=tempfile.gettempdir() + '/no-models-here'):
             self.assertEqual(face_checks.photo_problems(image_file()), [])
 
+    def test_an_altered_model_is_not_used(self):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        with open(f'{folder}/{face_checks.DETECTION_MODEL}', 'wb') as f:
+            f.write(b'not the real model')
+        with override_settings(FACE_MODELS_DIR=folder),                 patch.object(face_checks, '_find_faces') as find_faces:
+            self.assertEqual(face_checks.photo_problems(image_file()), [])
+        find_faces.assert_not_called()
+
+    def test_a_photo_declaring_too_many_pixels_is_refused_before_decoding(self):
+        """A small file can declare a huge image; decoding it would use
+        gigabytes of memory, so the header is checked first."""
+        buf = io.BytesIO()
+        Image.new('L', (6000, 6000)).save(buf, format='PNG')  # 36 MP, a few KB
+        upload = SimpleUploadedFile('big.png', buf.getvalue(), content_type='image/png')
+        with patch('cv2.imdecode') as imdecode:
+            self.assertIn('too large', face_checks.photo_problems(upload)[0])
+        imdecode.assert_not_called()
+
 
 class FakeRecognizer:
     def __init__(self, score):
@@ -81,6 +100,14 @@ class FakeRecognizer:
 
 
 class CompareFacesTests(SimpleTestCase):
+    def setUp(self):
+        # The comparison model is downloaded at build time, not committed, so
+        # these tests mustn't depend on it being present (the recogniser is
+        # faked anyway).
+        model_ok = patch.object(face_checks, '_model_ok', return_value=True)
+        model_ok.start()
+        self.addCleanup(model_ok.stop)
+
     def _compare(self, score):
         with patch.object(face_checks, '_find_faces', return_value=[fake_face(50, 50, 200, 200)]), \
                 patch('cv2.FaceRecognizerSF.create', return_value=FakeRecognizer(score)):
@@ -104,8 +131,14 @@ class CompareFacesTests(SimpleTestCase):
 
     @override_settings(FACE_COMPARISON_ENABLED=True)
     def test_no_face_found_gives_no_advice(self):
-        with patch.object(face_checks, '_find_faces', return_value=[]):
+        with patch.object(face_checks, '_find_faces', return_value=[]) as find_faces,                 patch('cv2.FaceRecognizerSF.create', return_value=FakeRecognizer(0.9)):
             self.assertIsNone(face_checks.compare_faces(image_file(), image_file()))
+        find_faces.assert_called()
+
+    @override_settings(FACE_COMPARISON_ENABLED=True)
+    def test_a_missing_comparison_model_gives_no_advice(self):
+        with patch.object(face_checks, '_model_ok', side_effect=lambda name: name != face_checks.COMPARISON_MODEL):
+            self.assertIsNone(self._compare(0.9))
 
 
 @override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True)

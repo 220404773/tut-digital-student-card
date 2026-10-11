@@ -13,6 +13,7 @@ change (it never approves or rejects), and its result is not stored.
 Both fail open: if a model is missing or OpenCV errors, nothing is blocked -
 the problem is logged and a staff member still looks at every photo change.
 """
+import io
 import logging
 from pathlib import Path
 
@@ -22,6 +23,17 @@ logger = logging.getLogger(__name__)
 
 DETECTION_MODEL = 'face_detection_yunet_2023mar.onnx'
 COMPARISON_MODEL = 'face_recognition_sface_2021dec.onnx'
+# SHA-256 of each model, checked before it is first loaded in a process - a
+# truncated download or a swapped file is refused rather than run.
+MODEL_SHA256 = {
+    DETECTION_MODEL: '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4',
+    COMPARISON_MODEL: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79',
+}
+# A photo's header is read before the image is decoded: a small file can
+# declare an enormous image, and decoding that would exhaust the server's
+# memory (the 5 MB upload limit counts bytes, not pixels). 25 MP is well above
+# any phone camera.
+MAX_PIXELS = 25_000_000
 
 # The face must span at least this share of the photo's shorter side - a
 # card photo is a head-and-shoulders shot, not a distant figure.
@@ -41,15 +53,48 @@ def _model_path(name):
     return Path(settings.FACE_MODELS_DIR) / name
 
 
+_verified_models = {}
+
+
+def _model_ok(name):
+    """True if the model file is present and matches its known checksum.
+    Checked once per process per file version, not on every upload."""
+    import hashlib
+
+    path = _model_path(name)
+    try:
+        version = (str(path), path.stat().st_mtime_ns, path.stat().st_size)
+    except OSError:
+        return False
+    if version not in _verified_models:
+        _verified_models[version] = hashlib.sha256(path.read_bytes()).hexdigest() == MODEL_SHA256[name]
+        if not _verified_models[version]:
+            logger.warning("Face model %s does not match its checksum - not used", name)
+    return _verified_models[version]
+
+
+class ImageTooLarge(Exception):
+    """The image declares more pixels than MAX_PIXELS."""
+
+
 def _decode(fileobj):
     """An OpenCV image from an uploaded or stored file, downscaled so a large
     phone photo stays quick to check. None if it isn't a readable image."""
     import cv2
     import numpy as np
+    from PIL import Image
 
     fileobj.seek(0)
     data = fileobj.read()
     fileobj.seek(0)
+    try:
+        # Opening reads only the header, so this costs nothing even for a
+        # file that declares a huge image.
+        width, height = Image.open(io.BytesIO(data)).size
+    except Exception:
+        return None
+    if width * height > MAX_PIXELS:
+        raise ImageTooLarge()
     image = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return None
@@ -75,13 +120,16 @@ def _find_faces(image):
 def photo_problems(fileobj):
     """Reasons this upload can't be a card photo, in words for the student.
     An empty list means it's fine (or the check couldn't run)."""
-    if not _model_path(DETECTION_MODEL).exists():
-        logger.warning("Face detection model missing - photo checks skipped")
+    if not _model_ok(DETECTION_MODEL):
+        logger.warning("Face detection model missing or altered - photo checks skipped")
         return []
     try:
         import cv2
 
-        image = _decode(fileobj)
+        try:
+            image = _decode(fileobj)
+        except ImageTooLarge:
+            return ['This photo is too large. Please use a normal phone photo (under 25 megapixels).']
         if image is None:
             return []  # not an image at all: the form's own checks say so
         faces = _find_faces(image)
@@ -111,8 +159,8 @@ def compare_faces(current_file, new_file):
     Nothing is stored: the face measurements exist only for this call."""
     if not settings.FACE_COMPARISON_ENABLED:
         return None
-    if not (_model_path(DETECTION_MODEL).exists() and _model_path(COMPARISON_MODEL).exists()):
-        logger.warning("Face comparison model missing - run manage.py download_face_models")
+    if not (_model_ok(DETECTION_MODEL) and _model_ok(COMPARISON_MODEL)):
+        logger.warning("Face comparison model missing or altered - run manage.py download_face_models")
         return None
     try:
         import cv2
@@ -120,7 +168,10 @@ def compare_faces(current_file, new_file):
         recognizer = cv2.FaceRecognizerSF.create(str(_model_path(COMPARISON_MODEL)), '')
         features = []
         for fileobj in (current_file, new_file):
-            image = _decode(fileobj)
+            try:
+                image = _decode(fileobj)
+            except ImageTooLarge:
+                return None
             faces = _find_faces(image) if image is not None else []
             if not faces:
                 return None

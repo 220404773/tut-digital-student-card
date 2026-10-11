@@ -15,9 +15,9 @@
         <table class="table table-hover table-sm">
             <thead class="table-light">
                 <tr>
-                    <th>Path</th>
-                    <th>IP Address</th>
-                    <th>Timestamp</th>
+                    <th scope="col">Path</th>
+                    <th scope="col">IP Address</th>
+                    <th scope="col">Timestamp</th>
                 </tr>
             </thead>
             <tbody>
@@ -38,11 +38,11 @@
 
     {% if not visitor.is_staff %}
         <a href="{% url 'staff_student_detail' visitor.id %}" class="btn btn-outline-primary me-2">
-            <i class="fas fa-user"></i> View Student Profile
+            <i class="fas fa-user" aria-hidden="true"></i> View Student Profile
         </a>
     {% endif %}
     <a href="{% url 'report_visit_users' %}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Visitors
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Visitors
     </a>
 </div>
 {% endblock %}

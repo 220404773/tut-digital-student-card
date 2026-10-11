@@ -15,13 +15,13 @@
         <table class="table table-hover table-sm">
             <thead class="table-light">
                 <tr>
-                    <th>Student</th>
-                    <th>Email</th>
-                    <th>Signed Up</th>
-                    <th>Status</th>
-                    <th>Confirmed At</th>
-                    <th>Time to Confirm</th>
-                    <th></th>
+                    <th scope="col">Student</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Signed Up</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Confirmed At</th>
+                    <th scope="col">Time to Confirm</th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -41,7 +41,7 @@
                         <td>{% if student.confirmation_duration %}{{ student.confirmation_duration }}{% else %}-{% endif %}</td>
                         <td>
                             <a href="{% url 'staff_student_detail' student.id %}" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye"></i> View Student
+                                <i class="fas fa-eye" aria-hidden="true"></i> View Student
                             </a>
                         </td>
                     </tr>
@@ -55,7 +55,7 @@
     </div>
 
     <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Reports
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Reports
     </a>
 </div>
 {% endblock %}

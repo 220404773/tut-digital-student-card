@@ -543,22 +543,25 @@ def resolve_name_change(request, user_id):
     """Approve or reject a name change a student made after their card was
     issued. The name is printed on the card, so it only changes once a person
     has checked it against the university's records."""
-    student = get_object_or_404(User, pk=user_id)
-    if not student.name_change_requested_at:
-        messages.info(request, 'That name change has already been decided.')
-        return redirect('report_review_requests')
-
     action = request.POST.get('action')
     if action not in ('approve', 'reject'):
         messages.error(request, 'Choose Approve or Reject.')
         return redirect('report_review_requests')
-    if action == 'approve':
-        student.first_name, student.last_name = student.pending_first_name, student.pending_last_name
-    requested = f'{student.pending_first_name} {student.pending_last_name}'.strip()
-    student.pending_first_name = student.pending_last_name = ''
-    student.name_change_requested_at = None
-    student.save(update_fields=['first_name', 'last_name', 'pending_first_name', 'pending_last_name',
-                                'name_change_requested_at'])
+
+    # Locked so two staff deciding at once, or the student withdrawing the
+    # request meanwhile, can't both act: whoever is second sees it decided.
+    with transaction.atomic():
+        student = get_object_or_404(User.objects.select_for_update(), pk=user_id)
+        if not student.name_change_requested_at:
+            messages.info(request, 'That name change has already been decided.')
+            return redirect('report_review_requests')
+        if action == 'approve':
+            student.first_name, student.last_name = student.pending_first_name, student.pending_last_name
+        requested = f'{student.pending_first_name} {student.pending_last_name}'.strip()
+        student.pending_first_name = student.pending_last_name = ''
+        student.name_change_requested_at = None
+        student.save(update_fields=['first_name', 'last_name', 'pending_first_name', 'pending_last_name',
+                                    'name_change_requested_at'])
     if action == 'approve':
         messages.success(request, f'Approved the name change - the card now shows {requested}.')
     else:
@@ -572,28 +575,33 @@ def resolve_photo_change(request, user_id):
     """Approve or reject a new photo a student uploaded after their card was
     issued. The card's photo is what a guard compares with the holder's face,
     so it only changes once a person has checked it is the same student."""
-    student = get_object_or_404(User, pk=user_id)
-    if not student.pending_profile_picture:
-        messages.info(request, 'That photo change has already been decided.')
+    action = request.POST.get('action')
+    if action not in ('approve', 'reject'):
+        messages.error(request, 'Choose Approve or Reject.')
         return redirect('report_review_requests')
 
-    action = request.POST.get('action')
-    if action == 'approve':
-        if student.profile_picture:
-            student.profile_picture.delete(save=False)
-        student.profile_picture = student.pending_profile_picture.name
+    # Locked like resolve_name_change. Files are deleted only after the
+    # change commits, so a failed save never leaves the card without a photo.
+    with transaction.atomic():
+        student = get_object_or_404(User.objects.select_for_update(), pk=user_id)
+        if not student.pending_profile_picture:
+            messages.info(request, 'That photo change has already been decided.')
+            return redirect('report_review_requests')
+        storage = student.pending_profile_picture.storage
+        if action == 'approve':
+            unused = student.profile_picture.name
+            student.profile_picture = student.pending_profile_picture.name
+        else:
+            unused = student.pending_profile_picture.name
         student.pending_profile_picture = None
         student.pending_photo_compare_consent = False
         student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent'])
+        if unused:
+            transaction.on_commit(lambda: storage.delete(unused))
+    if action == 'approve':
         messages.success(request, f"Approved {student.get_full_name_display()}'s new photo - it now shows on their card.")
-    elif action == 'reject':
-        student.pending_profile_picture.delete(save=False)
-        student.pending_profile_picture = None
-        student.pending_photo_compare_consent = False
-        student.save(update_fields=['pending_profile_picture', 'pending_photo_compare_consent'])
-        messages.success(request, f"Rejected {student.get_full_name_display()}'s new photo - their card keeps the current one.")
     else:
-        messages.error(request, 'Choose Approve or Reject.')
+        messages.success(request, f"Rejected {student.get_full_name_display()}'s new photo - their card keeps the current one.")
     return redirect('report_review_requests')
 
 

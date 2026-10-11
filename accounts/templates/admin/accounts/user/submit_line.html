@@ -12,16 +12,20 @@
 </style>
 {{ block.super }}
 {% if original %}
-    <form method="post" action="{% url 'admin:accounts_user_revoke_card' original.pk %}" style="display:inline;"
-          data-confirm="Revoke {{ original.get_full_name_display }}'s digital card? It will immediately show as invalid when scanned.">
-        {% csrf_token %}
-        <input type="submit" class="button" value="Revoke Card" style="background:#a4231c; color:#fff;">
-    </form>
-    <form method="post" action="{% url 'admin:accounts_user_reissue_card' original.pk %}" style="display:inline;"
-          data-confirm="Reissue a new card number and QR code for {{ original.get_full_name_display }}? Their old card number will stop working.">
-        {% csrf_token %}
-        <input type="submit" class="button" value="Reissue Card" style="background:#146c43; color:#fff;">
-    </form>
+    {% comment %}
+        This row sits inside the admin's own change form, and a form inside a form
+        isn't valid HTML: browsers drop the inner <form> tags, so these buttons used
+        to just save the student. Instead each is a submit button of the admin form
+        that posts somewhere else (formaction) - the admin form's CSRF token goes
+        with it, its other fields are ignored by the revoke/reissue views, and
+        formnovalidate skips checks on fields that aren't being saved.
+    {% endcomment %}
+    <button type="submit" class="button" style="background:#a4231c; color:#fff;"
+            formaction="{% url 'admin:accounts_user_revoke_card' original.pk %}" formmethod="post" formnovalidate
+            data-confirm="Revoke {{ original.get_full_name_display }}'s digital card? It will immediately show as invalid when scanned.">Revoke Card</button>
+    <button type="submit" class="button" style="background:#146c43; color:#fff;"
+            formaction="{% url 'admin:accounts_user_reissue_card' original.pk %}" formmethod="post" formnovalidate
+            data-confirm="Reissue a new card number and QR code for {{ original.get_full_name_display }}? Their old card number will stop working.">Reissue Card</button>
     <script src="{% static 'js/confirm-submit.js' %}"></script>
 {% endif %}
 {% endblock %}

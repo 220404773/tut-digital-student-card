@@ -15,13 +15,13 @@
         <table class="table table-hover table-sm">
             <thead class="table-light">
                 <tr>
-                    <th>Student</th>
-                    <th>Email</th>
-                    <th>Signup Duration</th>
-                    <th>File Size</th>
-                    <th>Verified</th>
-                    <th>Timestamp</th>
-                    <th></th>
+                    <th scope="col">Student</th>
+                    <th scope="col">Email</th>
+                    <th scope="col">Signup Duration</th>
+                    <th scope="col">File Size</th>
+                    <th scope="col">Verified</th>
+                    <th scope="col">Timestamp</th>
+                    <th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -41,7 +41,7 @@
                         <td>{{ signup.created_at|date:"Y-m-d H:i:s" }}</td>
                         <td>
                             <a href="{% url 'staff_student_detail' signup.user.id %}" class="btn btn-sm btn-outline-primary">
-                                <i class="fas fa-eye"></i> View Student
+                                <i class="fas fa-eye" aria-hidden="true"></i> View Student
                             </a>
                         </td>
                     </tr>
@@ -55,7 +55,7 @@
     </div>
 
     <a href="{% url 'performance_dashboard' %}" class="btn btn-outline-secondary">
-        <i class="fas fa-arrow-left"></i> Back to Reports
+        <i class="fas fa-arrow-left" aria-hidden="true"></i> Back to Reports
     </a>
 </div>
 {% endblock %}

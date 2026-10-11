@@ -12,7 +12,7 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlsafe_base64_decode
-from django.db import models
+from django.db import models, transaction
 from .models import ReviewRequest, User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .login_guard import clear_failed_logins, login_wait_seconds, record_failed_login
@@ -847,6 +847,15 @@ def session_keepalive(request):
     return JsonResponse({'expires_in': request.session.get_expiry_age()})
 
 
+def _requested_name(user):
+    """While a name change waits for staff, the profile form shows the
+    requested name - otherwise saving any other detail would post the old
+    name back and quietly withdraw the request."""
+    if user.name_change_requested_at:
+        return {'first_name': user.pending_first_name, 'last_name': user.pending_last_name}
+    return {}
+
+
 @login_required(login_url='login')
 def profile(request):
     """
@@ -857,7 +866,7 @@ def profile(request):
     user = request.user
 
     if request.method == 'POST' and request.POST.get('form_type') == 'password':
-        form = CustomUserChangeForm(instance=user)
+        form = CustomUserChangeForm(instance=user, initial=_requested_name(user))
         password_form = StyledPasswordChangeForm(user, request.POST)
         if password_form.is_valid():
             updated_user = password_form.save()
@@ -884,38 +893,60 @@ def profile(request):
             # checks the holder against, so changes to them wait for a staff
             # member instead of appearing on the card straight away. Other
             # details (phone and so on) save as normal.
-            if new_photo and has_card and settings.REQUIRE_PHOTO_FOR_CARD:
-                if updated.pending_profile_picture:
-                    updated.pending_profile_picture.delete(save=False)
+            photo_locked = has_card and settings.REQUIRE_PHOTO_FOR_CARD
+            replaced_pending_photo = None
+            withdrawn = False
+            if photo_locked and new_photo:
+                replaced_pending_photo = updated.pending_profile_picture.name or None
                 updated.pending_profile_picture = form.cleaned_data['profile_picture']
-                updated.profile_picture = current_photo
                 # Face comparison only with the student's explicit consent
                 # (biometric data, POPIA s27); otherwise staff compare by eye.
                 updated.pending_photo_compare_consent = (
                     settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
                 )
                 waiting.append('photo')
-            if new_name != current_name and has_card:
+            if photo_locked:
+                # Always the photo the card was issued with - a new upload is
+                # waiting above, and the form's "clear" option must not remove
+                # it either.
+                updated.profile_picture = current_photo
+            if has_card and new_name != current_name:
+                if (updated.pending_first_name, updated.pending_last_name) != new_name or not updated.name_change_requested_at:
+                    updated.name_change_requested_at = timezone.now()
                 updated.pending_first_name, updated.pending_last_name = new_name
-                updated.name_change_requested_at = timezone.now()
                 updated.first_name, updated.last_name = current_name
                 waiting.append('name')
-            updated.save()
+            elif has_card and updated.name_change_requested_at:
+                # Back to the name on the card: the request is withdrawn, so
+                # staff can't approve a name the student no longer wants.
+                updated.pending_first_name = updated.pending_last_name = ''
+                updated.name_change_requested_at = None
+                withdrawn = True
 
+            with transaction.atomic():
+                updated.save()
+                if replaced_pending_photo:
+                    # Only once the new one is saved - deleting first would
+                    # lose both photos if the save failed.
+                    storage = updated.pending_profile_picture.storage
+                    transaction.on_commit(lambda: storage.delete(replaced_pending_photo))
+
+            if withdrawn:
+                messages.info(request, 'Your name change request was withdrawn - your card keeps your current name.')
             if waiting:
                 messages.success(
                     request,
                     f"Profile updated. Your new {' and '.join(waiting)} will appear on your card "
                     f"once a staff member approves {'them' if len(waiting) > 1 else 'it'}."
                 )
-            else:
+            elif not withdrawn:
                 messages.success(request, 'Profile updated successfully!')
             if new_photo and not has_card and user.is_verified:
                 # The photo may have been the last thing the card was waiting for.
                 _issue_first_card(request, user)
             return redirect('dashboard')
     else:
-        form = CustomUserChangeForm(instance=user)
+        form = CustomUserChangeForm(instance=user, initial=_requested_name(user))
         password_form = StyledPasswordChangeForm(user)
 
     # Get user's student card
