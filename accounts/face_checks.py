@@ -166,22 +166,45 @@ def compare_faces(current_file, new_file):
         import cv2
 
         recognizer = cv2.FaceRecognizerSF.create(str(_model_path(COMPARISON_MODEL)), '')
-        features = []
+        faces = []
         for fileobj in (current_file, new_file):
             try:
                 image = _decode(fileobj)
             except ImageTooLarge:
                 return None
-            faces = _find_faces(image) if image is not None else []
-            if not faces:
+            found = _find_faces(image) if image is not None else []
+            if not found:
                 return None
-            features.append(_mirror_averaged_feature(recognizer, recognizer.alignCrop(image, faces[0])))
+            faces.append(recognizer.alignCrop(image, found[0]))
+        faces = _same_colour_space(faces)
+        features = [_mirror_averaged_feature(recognizer, face) for face in faces]
         score = float(recognizer.match(features[0], features[1], cv2.FaceRecognizerSF_FR_COSINE))
     except Exception:
         logger.exception("Face comparison failed")
         return None
 
     return describe_similarity(score)
+
+
+def _is_black_and_white(image):
+    """True if the colour channels are (nearly) identical - a black-and-white
+    photo, even when saved as a colour file."""
+    import numpy as np
+
+    blue, green, red = (channel.astype(np.int16) for channel in image.transpose(2, 0, 1))
+    return max(np.abs(blue - green).mean(), np.abs(green - red).mean()) < 3
+
+
+def _same_colour_space(faces):
+    """If either photo is black and white, compare both in black and white.
+    Otherwise skin tone and lighting colour, which one photo simply doesn't
+    have, count as differences. Colour photos are left alone: turning every
+    photo grey also brought different people's scores closer together."""
+    import cv2
+
+    if not any(_is_black_and_white(face) for face in faces):
+        return faces
+    return [cv2.cvtColor(cv2.cvtColor(face, cv2.COLOR_BGR2GRAY), cv2.COLOR_GRAY2BGR) for face in faces]
 
 
 def _mirror_averaged_feature(recognizer, aligned_face):

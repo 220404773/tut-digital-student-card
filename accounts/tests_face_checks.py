@@ -145,6 +145,31 @@ class CompareFacesTests(SimpleTestCase):
         self.assertEqual(len(readings), 4)  # two photos, each read twice
         self.assertTrue((readings[1] == readings[0][:, ::-1]).all())  # the second reading is the mirror image
 
+    def _readings(self, current, new):
+        recognizer = FakeRecognizer(0.7)
+        readings = []
+        recognizer.feature = lambda aligned: readings.append(aligned) or aligned
+        with patch.object(face_checks, '_find_faces', return_value=[fake_face(50, 50, 200, 200)]),                 patch('cv2.FaceRecognizerSF.create', return_value=recognizer):
+            face_checks.compare_faces(current, new)
+        return readings
+
+    @staticmethod
+    def _is_grey(image):
+        return (image[:, :, 0] == image[:, :, 1]).all() and (image[:, :, 1] == image[:, :, 2]).all()
+
+    @override_settings(FACE_COMPARISON_ENABLED=True)
+    def test_a_black_and_white_photo_is_compared_in_black_and_white(self):
+        buf = io.BytesIO()
+        Image.fromarray(np.random.default_rng(2).integers(0, 255, (400, 400), dtype=np.uint8)).save(buf, format='PNG')
+        black_and_white = SimpleUploadedFile('old.png', buf.getvalue(), content_type='image/png')
+        readings = self._readings(black_and_white, image_file(noise=True))
+        self.assertTrue(all(self._is_grey(reading) for reading in readings))  # the colour photo too
+
+    @override_settings(FACE_COMPARISON_ENABLED=True)
+    def test_two_colour_photos_stay_in_colour(self):
+        readings = self._readings(image_file(noise=True), image_file(noise=True))
+        self.assertFalse(any(self._is_grey(reading) for reading in readings))
+
     @override_settings(FACE_COMPARISON_ENABLED=True)
     def test_a_missing_comparison_model_gives_no_advice(self):
         with patch.object(face_checks, '_model_ok', side_effect=lambda name: name != face_checks.COMPARISON_MODEL):
