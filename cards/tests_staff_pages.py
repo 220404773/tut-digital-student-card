@@ -113,3 +113,13 @@ class StaffPagesRenderWithDataTests(TestCase):
         self.assertRedirects(response, reverse('admin:accounts_user_change', args=[self.student.id]))
         self.card.refresh_from_db()
         self.assertEqual(self.card.status, 'revoked')
+
+    def test_pending_reviews_tile_counts_photo_and_name_changes_too(self):
+        """One photo change and nothing else waiting used to read "0"."""
+        self.student.pending_profile_picture = 'profile_pics/new.png'
+        self.student.save()
+        response = self.client.get(reverse('performance_dashboard'))
+        self.assertEqual(response.context['card_stats']['pending_total_count'], 1)
+        self.assertRegex(response.content.decode(), r'Pending Reviews</h6>\s*<h3>1</h3>')
+        self.assertContains(response, '1 photo change')
+        self.assertNotContains(response, 'registration review')

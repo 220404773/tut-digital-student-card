@@ -12,6 +12,9 @@ Card activity is the audit trail of who revoked/reissued a card and when, so
 those rows are kept - only the IP address and browser string, which identify
 the visitor rather than the event, are removed.
 
+A photo replaced by an automatic approval is kept for
+AUTO_APPROVED_PHOTO_UNDO_DAYS so staff can undo it, then deleted.
+
 Review requests that were decided before the cutoff lose the student's
 free-text message; the decision itself (reason, outcome, who decided, when
 and the staff note) is kept as the record that a person made it (POPIA s71).
@@ -22,7 +25,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from accounts.models import ReviewRequest
+from accounts.models import ReviewRequest, User
 from cards.models import CardActivity, PageVisit
 
 
@@ -43,6 +46,9 @@ class Command(BaseCommand):
         old_review_messages = ReviewRequest.objects.exclude(status='pending').filter(
             resolved_at__lt=cutoff,
         ).exclude(message='')
+        undo_cutoff = timezone.now() - timedelta(days=settings.AUTO_APPROVED_PHOTO_UNDO_DAYS)
+        expired_undo_photos = User.objects.filter(photo_auto_approved_at__lt=undo_cutoff).exclude(
+            previous_profile_picture='').exclude(previous_profile_picture__isnull=True)
 
         if options['dry_run']:
             self.stdout.write(
@@ -55,6 +61,9 @@ class Command(BaseCommand):
         deleted, _ = old_visits.delete()
         anonymised = old_activity.update(ip_address=None, user_agent=None)
         cleared = old_review_messages.update(message='')
+        for student in expired_undo_photos:
+            student.previous_profile_picture.delete(save=False)
+            student.save(update_fields=['previous_profile_picture'])
         self.stdout.write(self.style.SUCCESS(
             f'Deleted {deleted} page visit(s), anonymised {anonymised} card activity row(s) and cleared '
             f'{cleared} review message(s) older than {days} days.'

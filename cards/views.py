@@ -17,7 +17,8 @@ from django.utils import timezone
 from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import User, DeletedStudentLog, ReviewRequest
-from accounts.face_checks import compare_faces
+from accounts.face_checks import compare_faces, describe_similarity
+from accounts.photo_changes import decision_message, email_decision
 from accounts.services import confirmation_cooldown_remaining, send_confirmation_email, split_full_name
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import (
@@ -43,6 +44,19 @@ def student_required(view_func):
     return wrapper
 
 
+def _tell_student_about_card_decisions(request, user):
+    """Show each decision on the student's photo or name change once, as a
+    pop-up - otherwise a rejected photo just silently never appeared."""
+    decisions = list(ReviewRequest.objects.filter(
+        user=user, reason__in=ReviewRequest.CARD_CHANGE_REASONS, student_notified=False,
+    ).order_by('resolved_at'))
+    for decision in decisions:
+        level, text = decision_message(decision)
+        messages.add_message(request, messages.SUCCESS if level == 'success' else messages.WARNING, text)
+    if decisions:
+        ReviewRequest.objects.filter(pk__in=[d.pk for d in decisions]).update(student_notified=True)
+
+
 @student_required
 def dashboard(request):
     """
@@ -50,6 +64,7 @@ def dashboard(request):
     """
 
     user = request.user
+    _tell_student_about_card_decisions(request, user)
     try:
         student_card = StudentCard.objects.get(user=user)
         student_card.refresh_status()
@@ -523,13 +538,26 @@ def report_review_requests(request):
     """Students the automated check didn't verify, waiting for a person to
     decide (POPIA s71). Pending requests first, then recent decisions."""
     pending = ReviewRequest.objects.filter(status='pending').select_related('user').order_by('created_at')
-    resolved = (ReviewRequest.objects.exclude(status='pending').select_related('user', 'resolved_by')
-                .order_by('-resolved_at')[:50])
+    resolved = list(ReviewRequest.objects.exclude(status='pending').select_related('user', 'resolved_by')
+                    .order_by('-resolved_at')[:50])
+    # Automatic photo approvals a staff member can still undo: the student's
+    # latest photo decision, while the photo it replaced is kept.
+    undoable = set()
+    for review in resolved:
+        if (review.reason == 'photo_change' and review.status == 'approved' and review.resolved_by_id is None
+                and review.user.previous_profile_picture):
+            latest = (ReviewRequest.objects.filter(user=review.user, reason='photo_change')
+                      .order_by('-resolved_at').values_list('pk', flat=True).first())
+            if latest == review.pk:
+                undoable.add(review.pk)
     return render(request, 'cards/report_review_requests.html', {
         'pending': pending,
         'resolved': resolved,
         'photo_changes': [(student, _photo_comparison(student)) for student in students_with_photo_changes()],
         'face_comparison_enabled': settings.FACE_COMPARISON_ENABLED,
+        'face_auto_approve_enabled': settings.FACE_COMPARISON_ENABLED and settings.FACE_AUTO_APPROVE_ENABLED,
+        'auto_approve_min_similarity': settings.FACE_AUTO_APPROVE_MIN_SIMILARITY,
+        'undoable': undoable,
         'name_changes': students_with_name_changes(),
         'today': timezone.now().date(),
     })
@@ -538,10 +566,13 @@ def report_review_requests(request):
 def _photo_comparison(student):
     """Advice for the reviewing staff member on whether the waiting photo
     shows the same person as the card photo - only if the student consented
-    and comparison is switched on. Worked out each time the page is shown and
-    never stored (see accounts/face_checks.py)."""
+    and comparison is switched on. Uses the score worked out at upload; only
+    photos uploaded before that was kept are compared here. No face
+    measurements are stored (see accounts/face_checks.py)."""
     if not (settings.FACE_COMPARISON_ENABLED and student.pending_photo_compare_consent and student.profile_picture):
         return None
+    if student.pending_photo_similarity is not None:
+        return describe_similarity(student.pending_photo_similarity)
     try:
         with student.profile_picture.open('rb') as current, student.pending_profile_picture.open('rb') as new:
             return compare_faces(current, new)
@@ -584,9 +615,11 @@ def resolve_name_change(request, user_id):
         student.name_change_requested_at = None
         student.save(update_fields=['first_name', 'last_name', 'pending_first_name', 'pending_last_name',
                                     'name_change_requested_at'])
-        ReviewRequest.record_card_change(
-            student, 'name_change', action == 'approve', request.user, note=f'{previous} -> {requested}',
+        decision = ReviewRequest.record_card_change(
+            student, 'name_change', action == 'approve', request.user,
+            note=request.POST.get('staff_note', '').strip()[:1000], detail=f'{previous} -> {requested}',
         )
+        transaction.on_commit(lambda: email_decision(decision, request))
     if action == 'approve':
         messages.success(request, f'Approved the name change - the card now shows {requested}.')
     else:
@@ -614,20 +647,63 @@ def resolve_photo_change(request, user_id):
             return redirect('report_review_requests')
         storage = student.pending_profile_picture.storage
         if action == 'approve':
-            unused = student.profile_picture.name
+            unused = [student.profile_picture.name, student.previous_profile_picture.name]
             student.profile_picture = student.pending_profile_picture.name
+            # A person has now checked the face: automatic approval may be
+            # used again next time, and there is nothing left to undo.
+            student.photo_auto_approved_at = None
+            student.previous_profile_picture = None
         else:
-            unused = student.pending_profile_picture.name
+            unused = [student.pending_profile_picture.name]
         student.pending_profile_picture = None
         student.pending_photo_compare_consent = False
-        student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent'])
-        ReviewRequest.record_card_change(student, 'photo_change', action == 'approve', request.user)
-        if unused:
-            transaction.on_commit(lambda: storage.delete(unused))
+        student.pending_photo_similarity = None
+        student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent',
+                                    'pending_photo_similarity', 'photo_auto_approved_at', 'previous_profile_picture'])
+        decision = ReviewRequest.record_card_change(
+            student, 'photo_change', action == 'approve', request.user,
+            note=request.POST.get('staff_note', '').strip()[:1000],
+        )
+        for name in filter(None, unused):
+            transaction.on_commit(lambda name=name: storage.delete(name))
+        transaction.on_commit(lambda: email_decision(decision, request))
     if action == 'approve':
         messages.success(request, f"Approved {student.get_full_name_display()}'s new photo - it now shows on their card.")
     else:
         messages.success(request, f"Rejected {student.get_full_name_display()}'s new photo - their card keeps the current one.")
+    return redirect('report_review_requests')
+
+
+@staff_member_required(login_url='login')
+@require_POST
+def undo_automatic_photo_approval(request, review_id):
+    """Put back the photo an automatic approval replaced - for a staff
+    member who disagrees with the face comparison. Possible until the old
+    photo is cleared (AUTO_APPROVED_PHOTO_UNDO_DAYS, or a later decision)."""
+    with transaction.atomic():
+        review = get_object_or_404(ReviewRequest.objects.select_for_update(), pk=review_id,
+                                   reason='photo_change', status='approved', resolved_by__isnull=True)
+        student = User.objects.select_for_update().get(pk=review.user_id)
+        latest = ReviewRequest.objects.filter(user=student, reason='photo_change').order_by('-resolved_at').first()
+        if latest != review or not student.previous_profile_picture:
+            messages.info(request, 'That automatic approval can no longer be undone.')
+            return redirect('report_review_requests')
+        storage = student.profile_picture.storage
+        unused = student.profile_picture.name
+        student.profile_picture = student.previous_profile_picture.name
+        student.previous_profile_picture = None
+        # photo_auto_approved_at stays set, so the next change goes to a person.
+        student.save(update_fields=['profile_picture', 'previous_profile_picture'])
+        review.message = f'{review.message} - undone by {request.user.email}'
+        review.save(update_fields=['message'])
+        decision = ReviewRequest.record_card_change(
+            student, 'photo_change', False, request.user,
+            note=request.POST.get('staff_note', '').strip()[:1000] or 'The automatic approval was reversed by staff.',
+            detail='Automatic approval undone',
+        )
+        transaction.on_commit(lambda: storage.delete(unused))
+        transaction.on_commit(lambda: email_decision(decision, request))
+    messages.success(request, f"Undone - {student.get_full_name_display()}'s card shows their previous photo again.")
     return redirect('report_review_requests')
 
 

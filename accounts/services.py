@@ -7,6 +7,7 @@ and services, never on each other.
 """
 import logging
 import re
+import unicodedata
 from datetime import timedelta
 
 from django.conf import settings
@@ -28,6 +29,33 @@ def normalise_student_number(value):
     both introduce stray spaces, dashes and case differences that don't
     change which student the number identifies."""
     return re.sub(r'[^0-9A-Za-z]', '', value or '').upper()
+
+
+# Words on a document that are not part of the name itself.
+_NAME_TITLES = {'mr', 'mrs', 'ms', 'miss', 'dr', 'prof', 'mnr', 'mev', 'me'}
+
+
+def _name_words(text):
+    """Lower-case words of a name, without accents, punctuation or titles."""
+    plain = unicodedata.normalize('NFKD', text or '').encode('ascii', 'ignore').decode()
+    return [word for word in re.sub(r'[^a-z]+', ' ', plain.lower()).split() if word not in _NAME_TITLES]
+
+
+def name_matches_document(typed, document_full_name):
+    """Whether a typed name (or surname) agrees with the full name read from
+    the proof of registration. Forgiving about what honestly differs: case,
+    accents, spacing, order, a title, a middle name left out, or the
+    document giving only an initial. Every typed word must appear on the
+    document. A document name that couldn't be read never counts as a
+    mismatch - there is nothing to compare."""
+    document_words = _name_words(document_full_name)
+    if not document_words:
+        return True
+    typed_words = _name_words(typed)
+    return bool(typed_words) and all(
+        any(word == doc or (len(doc) == 1 and word[0] == doc) for doc in document_words)
+        for word in typed_words
+    )
 
 
 def split_full_name(full_name):

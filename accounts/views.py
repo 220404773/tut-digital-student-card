@@ -14,14 +14,17 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlsafe_base64_decode
+from django.core.cache import cache
 from django.db import models, transaction
 from .models import ReviewRequest, User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .login_guard import clear_failed_logins, login_wait_seconds, record_failed_login
+from .photo_changes import can_approve_automatically, compare_with_card_photo
 from tut_student_card.client_ip import get_client_ip
 from .services import (
     EMAIL_NOT_CONFIGURED_MESSAGE, confirmation_cooldown_remaining, email_is_delivered,
-    delete_registration_proof, normalise_student_number, send_confirmation_email, split_full_name,
+    delete_registration_proof, name_matches_document, normalise_student_number, send_confirmation_email,
+    split_full_name,
 )
 from .tokens import email_confirmation_token
 from cards.models import StudentCard, CardActivity, SignupMetrics, OCRMetrics
@@ -53,6 +56,44 @@ def post_login_redirect(user):
     """Staff/admin accounts have no student card - send them to the admin
     reporting page instead of the student dashboard."""
     return redirect('performance_dashboard') if user.is_staff else redirect('dashboard')
+
+
+# How many times a student is asked to correct details that differ from their
+# proof of registration before the signup goes to a staff member instead.
+DETAIL_CORRECTION_ATTEMPTS = 2
+
+
+def _details_differing_from_document(form_data, ocr_result):
+    """{field: message} for each typed detail that disagrees with what was
+    read from the document. A detail the document didn't give (or that
+    couldn't be read) is not compared."""
+    differing = {}
+    document_number = ocr_result.get('student_number')
+    if document_number and (normalise_student_number(document_number)
+                            != normalise_student_number(form_data.get('student_number'))):
+        differing['student_number'] = (
+            f"This doesn't match the student number on your proof of registration ({document_number})."
+        )
+    document_name = ocr_result.get('full_name')
+    for field in ('first_name', 'last_name'):
+        if not name_matches_document(form_data.get(field), document_name):
+            differing[field] = f"This doesn't match the name on your proof of registration ({document_name})."
+    document_email = (ocr_result.get('email') or '').strip()
+    if document_email and document_email.lower() != (form_data.get('email') or '').strip().lower():
+        differing['email'] = f"This doesn't match the email on your proof of registration ({document_email})."
+    return differing
+
+
+def _detail_correction_attempt(proof_hash):
+    """Count one more submission of this document with differing details;
+    returns the count. Kept for a day, by the document's content."""
+    key = f'signup-detail-mismatch:{proof_hash}'
+    cache.add(key, 0, 60 * 60 * 24)
+    try:
+        return cache.incr(key)
+    except ValueError:  # expired between add and incr
+        cache.set(key, 1, 60 * 60 * 24)
+        return 1
 
 
 def _registration_period_problem(ocr_result):
@@ -312,6 +353,33 @@ def signup(request):
                             messages.warning(request, problem)
                             return render(request, 'accounts/signup.html', {'form': form})
 
+                        # The form fills itself in from the document, but every
+                        # field can be edited - which is how a genuine document
+                        # gets paired with someone else's details. The first
+                        # times, the student is asked to correct them (no
+                        # account yet); after that a person decides, since the
+                        # document itself may have been misread.
+                        differing = _details_differing_from_document(form.cleaned_data, ocr_result)
+                        name_differs = bool({'first_name', 'last_name'} & differing.keys())
+                        if differing:
+                            attempt = _detail_correction_attempt(proof_hash)
+                            if attempt <= DETAIL_CORRECTION_ATTEMPTS:
+                                for field, error in differing.items():
+                                    form.add_error(field, error)
+                                messages.warning(
+                                    request,
+                                    "Some details don't match your proof of registration - please correct them "
+                                    f"to match the document (attempt {attempt} of {DETAIL_CORRECTION_ATTEMPTS}). "
+                                    + ("If the document was read wrongly, submit again unchanged and a staff "
+                                       "member will check it." if attempt == DETAIL_CORRECTION_ATTEMPTS else '')
+                                )
+                                # Kept so the retry doesn't read the document again.
+                                request.session[OCR_PREVIEW_SESSION_KEY] = {
+                                    'hash': proof_hash, 'result': _scoped_ocr_cache(ocr_result),
+                                    'duration': ocr_duration,
+                                }
+                                return render(request, 'accounts/signup.html', {'form': form})
+
                         # The form pre-fills the student number from the
                         # document, but the student can edit it before
                         # submitting - so without this, a classmate's genuine
@@ -337,6 +405,14 @@ def signup(request):
                                     'We could not read a student number from your document. '
                                     'Your account has been created and sent to an administrator for manual review.'
                                 )
+                        elif name_differs:
+                            review_reason = 'name_mismatch'
+                            user.is_verified = False
+                            messages.warning(
+                                request,
+                                'The name you entered does not match your document. '
+                                'Your account has been created and sent to a staff member for review.'
+                            )
                         elif ocr_result.get('needs_human_review'):
                             # The document's text appeared to address the AI,
                             # so it was never shown to the model - a person
@@ -959,22 +1035,44 @@ def profile(request):
                 # member instead of appearing on the card straight away. Other
                 # details (phone and so on) save as normal.
                 photo_locked = has_card and settings.REQUIRE_PHOTO_FOR_CARD
-                replaced_pending_photo = None
+                storage = updated.profile_picture.storage
+                unused_photos = []  # deleted once the save has committed
+                auto_approved = None
                 withdrawn = False
                 if photo_locked and new_photo:
-                    replaced_pending_photo = updated.pending_profile_picture.name or None
-                    updated.pending_profile_picture = form.cleaned_data['profile_picture']
+                    upload = form.cleaned_data['profile_picture']
                     # Face comparison only with the student's explicit consent
                     # (biometric data, POPIA s27); otherwise staff compare by eye.
-                    updated.pending_photo_compare_consent = (
-                        settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
-                    )
-                    waiting.append('photo')
-                if photo_locked:
-                    # Always the photo the card was issued with - a new upload is
-                    # waiting above, and the form's "clear" option must not remove
-                    # it either.
+                    consent = settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
+                    comparison = compare_with_card_photo(current_photo, storage, upload) if consent else None
+                    if updated.pending_profile_picture:
+                        unused_photos.append(updated.pending_profile_picture.name)
+                    updated.pending_profile_picture = None
+                    updated.pending_photo_compare_consent = False
+                    updated.pending_photo_similarity = None
+                    if can_approve_automatically(updated, comparison):
+                        # Clearly the same person: on the card now, with the
+                        # old photo kept so staff can undo it.
+                        if updated.previous_profile_picture:
+                            unused_photos.append(updated.previous_profile_picture.name)
+                        updated.previous_profile_picture = current_photo
+                        updated.profile_picture = upload
+                        updated.photo_auto_approved_at = timezone.now()
+                        auto_approved = comparison
+                    else:
+                        updated.pending_profile_picture = upload
+                        updated.pending_photo_compare_consent = consent
+                        updated.pending_photo_similarity = comparison['score'] if comparison else None
+                        updated.profile_picture = current_photo
+                        waiting.append('photo')
+                elif photo_locked:
+                    # The form's "clear" option must not take the photo off
+                    # an issued card.
                     updated.profile_picture = current_photo
+                elif current_photo and updated.profile_picture.name != current_photo:
+                    # No card yet, so a replaced or cleared photo is simply
+                    # gone - its file would otherwise stay in storage.
+                    unused_photos.append(current_photo)
                 if has_card and new_name != current_name:
                     if (updated.pending_first_name, updated.pending_last_name) != new_name or not updated.name_change_requested_at:
                         updated.name_change_requested_at = timezone.now()
@@ -989,11 +1087,20 @@ def profile(request):
                     withdrawn = True
 
                 updated.save()
-                if replaced_pending_photo:
-                    # Only once the new one is saved - deleting first would
-                    # lose both photos if the save failed.
-                    storage = updated.pending_profile_picture.storage
-                    transaction.on_commit(lambda: storage.delete(replaced_pending_photo))
+                # Only once the new photos are saved - deleting first would
+                # lose both if the save failed.
+                for name in unused_photos:
+                    transaction.on_commit(lambda name=name: storage.delete(name))
+                if auto_approved:
+                    ReviewRequest.record_card_change(
+                        updated, 'photo_change', True, None,
+                        detail=f"Automatic (similarity {auto_approved['score']:.2f})", notified=True,
+                    )
+                    messages.success(
+                        request,
+                        f"Your new photo matched your card photo (similarity {auto_approved['score']:.2f}) "
+                        "and is now on your card."
+                    )
 
                 if withdrawn:
                     messages.info(request, 'Your name change request was withdrawn - your card keeps your current name.')
@@ -1003,7 +1110,7 @@ def profile(request):
                         f"Profile updated. Your new {' and '.join(waiting)} will appear on your card "
                         f"once a staff member approves {'them' if len(waiting) > 1 else 'it'}."
                     )
-                elif not withdrawn:
+                elif not (withdrawn or auto_approved):
                     messages.success(request, 'Profile updated successfully!')
                 if new_photo and not has_card and user.is_verified:
                     # The photo may have been the last thing the card was waiting for.
@@ -1028,6 +1135,7 @@ def profile(request):
         # consent, be compared automatically with the current one.
         'photo_locked': student_card is not None and settings.REQUIRE_PHOTO_FOR_CARD,
         'face_comparison_enabled': settings.FACE_COMPARISON_ENABLED,
+        'face_auto_approve_enabled': settings.FACE_AUTO_APPROVE_ENABLED,
     }
     return render(request, 'accounts/profile.html', context)
 

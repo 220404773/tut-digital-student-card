@@ -114,6 +114,9 @@
                                     <span class="badge bg-warning text-dark">{{ comparison.verdict }}</span>
                                 {% endif %}
                                 <small class="d-block text-muted">similarity {{ comparison.score }} - advice only, you decide</small>
+                                {% if face_auto_approve_enabled %}
+                                    <small class="d-block text-muted">Below the {{ auto_approve_min_similarity }} needed for automatic approval{% if student.photo_auto_approved_at %}, or the previous change was already automatic{% endif %}</small>
+                                {% endif %}
                             {% elif face_comparison_enabled and student.pending_photo_compare_consent %}
                                 <small class="text-muted">Couldn't compare (no clear face found) - compare by eye</small>
                             {% elif face_comparison_enabled %}
@@ -125,6 +128,10 @@
                         <td>
                             <form method="post" action="{% url 'resolve_photo_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
+                                <label class="visually-hidden" for="photo-note-{{ student.id }}">Reason for the student</label>
+                                <input type="text" id="photo-note-{{ student.id }}" name="staff_note" maxlength="1000"
+                                       class="form-control form-control-sm" style="max-width: 220px;"
+                                       placeholder="Reason, if rejecting (shown to student)">
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
                                         aria-label="Approve the new photo for {{ student.get_full_name_display }}"
                                         data-confirm="Approve the new photo for {{ student.get_full_name_display }}? It will replace the photo on their card.">Approve</button>
@@ -169,6 +176,10 @@
                         <td>
                             <form method="post" action="{% url 'resolve_name_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
+                                <label class="visually-hidden" for="name-note-{{ student.id }}">Reason for the student</label>
+                                <input type="text" id="name-note-{{ student.id }}" name="staff_note" maxlength="1000"
+                                       class="form-control form-control-sm" style="max-width: 220px;"
+                                       placeholder="Reason, if rejecting (shown to student)">
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
                                         aria-label="Approve the name change for {{ student.get_full_name_display }}"
                                         data-confirm="Change the name on this card to {{ student.pending_first_name }} {{ student.pending_last_name }}?">Approve</button>
@@ -204,7 +215,12 @@
                 {% for review in resolved %}
                     <tr>
                         <td>{{ review.user.get_full_name_display }} ({{ review.user.student_number }})</td>
-                        <td>{{ review.get_reason_display }}</td>
+                        <td>
+                            {{ review.get_reason_display }}
+                            {% if review.reason == 'photo_change' or review.reason == 'name_change' %}
+                                {% if review.message %}<small class="d-block text-muted">{{ review.message }}</small>{% endif %}
+                            {% endif %}
+                        </td>
                         <td>
                             {% if review.status == 'approved' %}
                                 <span class="badge bg-success">Approved</span>
@@ -213,7 +229,17 @@
                             {% endif %}
                         </td>
                         <td>{{ review.staff_note|default:"—" }}</td>
-                        <td>{{ review.resolved_by.email|default:"Automatic" }}</td>
+                        <td>
+                            {{ review.resolved_by.email|default:"Automatic" }}
+                            {% if review.pk in undoable %}
+                                <form method="post" action="{% url 'undo_automatic_photo_approval' review.pk %}" class="mt-1"
+                                      data-confirm="Undo the automatic approval for {{ review.user.get_full_name_display }}? Their card goes back to the previous photo.">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            aria-label="Undo the automatic photo approval for {{ review.user.get_full_name_display }}">Undo</button>
+                                </form>
+                            {% endif %}
+                        </td>
                         <td>{{ review.resolved_at|date:"Y-m-d H:i" }}</td>
                     </tr>
                 {% empty %}

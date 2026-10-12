@@ -181,6 +181,11 @@ def compare_faces(current_file, new_file):
         logger.exception("Face comparison failed")
         return None
 
+    return describe_similarity(score)
+
+
+def describe_similarity(score):
+    """The advice for a similarity score, as compare_faces() returns it."""
     if score >= SAME_PERSON_THRESHOLD:
         level, verdict = 'same', 'Likely the same person'
     elif score < LIKELY_DIFFERENT_BELOW:

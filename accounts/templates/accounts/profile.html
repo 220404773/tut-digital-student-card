@@ -67,6 +67,8 @@
                                     Compare my new photo with my current card photo automatically, to help staff confirm it is
                                     me. This creates biometric data from both photos, used only for this check and not stored
                                     (see the <a href="{% url 'privacy' %}" target="_blank" rel="noopener">Privacy Policy</a>).
+                                    {% if face_auto_approve_enabled %}If the photos clearly match, your new photo goes on your
+                                    card straight away; otherwise a staff member checks it.{% endif %}
                                     Optional - without it, a staff member compares the photos by eye.
                                 </label>
                             </div>

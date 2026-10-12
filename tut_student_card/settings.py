@@ -376,6 +376,14 @@ PHOTO_FACE_CHECK_ENABLED = config('PHOTO_FACE_CHECK_ENABLED', default=True, cast
 # only for students who consent, only advises the reviewing staff member, and
 # stores nothing biometric.
 FACE_COMPARISON_ENABLED = config('FACE_COMPARISON_ENABLED', default=False, cast=bool)
+# With comparison on, a new photo whose similarity to the card photo is at
+# least FACE_AUTO_APPROVE_MIN_SIMILARITY is approved without waiting for
+# staff (recorded as "Automatic", undoable for AUTO_APPROVED_PHOTO_UNDO_DAYS).
+# Anything below waits for a person, and nothing is ever rejected
+# automatically (POPIA s71). Off by default - switch on to demonstrate it.
+FACE_AUTO_APPROVE_ENABLED = config('FACE_AUTO_APPROVE_ENABLED', default=False, cast=bool)
+FACE_AUTO_APPROVE_MIN_SIMILARITY = config('FACE_AUTO_APPROVE_MIN_SIMILARITY', default=0.75, cast=float)
+AUTO_APPROVED_PHOTO_UNDO_DAYS = 30
 
 # The card's QR code carries a signed code that changes every
 # LIVE_QR_REFRESH_SECONDS; the verification page shows it as LIVE only while

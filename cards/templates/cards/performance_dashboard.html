@@ -93,12 +93,15 @@
                     <div class="card" style="background-color: #1d4ed8; color: white;">
                         <div class="card-body">
                             <h6 class="card-title">Pending Reviews</h6>
-                            <h3>{{ card_stats.pending_reviews_count }}</h3>
+                            <h3>{{ card_stats.pending_total_count }}</h3>
+                            {% if card_stats.pending_reviews_count %}
+                                <small class="d-block">{{ card_stats.pending_reviews_count }} registration review{{ card_stats.pending_reviews_count|pluralize }}</small>
+                            {% endif %}
                             {% if card_stats.pending_photo_changes_count %}
-                                <small class="d-block">+ {{ card_stats.pending_photo_changes_count }} photo change{{ card_stats.pending_photo_changes_count|pluralize }}</small>
+                                <small class="d-block">{{ card_stats.pending_photo_changes_count }} photo change{{ card_stats.pending_photo_changes_count|pluralize }}</small>
                             {% endif %}
                             {% if card_stats.pending_name_changes_count %}
-                                <small class="d-block">+ {{ card_stats.pending_name_changes_count }} name change{{ card_stats.pending_name_changes_count|pluralize }}</small>
+                                <small class="d-block">{{ card_stats.pending_name_changes_count }} name change{{ card_stats.pending_name_changes_count|pluralize }}</small>
                             {% endif %}
                         </div>
                     </div>

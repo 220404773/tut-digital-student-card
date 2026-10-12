@@ -332,7 +332,7 @@ class NameLockTests(TestCase):
         self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
         record = ReviewRequest.objects.get(user=self.student, reason='name_change')
         self.assertEqual(record.status, 'approved')
-        self.assertEqual(record.staff_note, 'Kekeletso Khaka -> Keke Khaka')
+        self.assertEqual(record.message, 'Kekeletso Khaka -> Keke Khaka')
 
     def test_the_profile_page_shows_the_requested_name_while_it_waits(self):
         self._give_card()
