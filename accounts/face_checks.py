@@ -175,13 +175,23 @@ def compare_faces(current_file, new_file):
             faces = _find_faces(image) if image is not None else []
             if not faces:
                 return None
-            features.append(recognizer.feature(recognizer.alignCrop(image, faces[0])))
+            features.append(_mirror_averaged_feature(recognizer, recognizer.alignCrop(image, faces[0])))
         score = float(recognizer.match(features[0], features[1], cv2.FaceRecognizerSF_FR_COSINE))
     except Exception:
         logger.exception("Face comparison failed")
         return None
 
     return describe_similarity(score)
+
+
+def _mirror_averaged_feature(recognizer, aligned_face):
+    """The face's measurements, read once as it is and once mirrored, and
+    averaged. A face is nearly symmetrical, so this smooths out a head turned
+    slightly or light from one side: in a test on real photos it lifted the
+    scores of the same person a little and left different people unchanged."""
+    import cv2
+
+    return recognizer.feature(aligned_face) + recognizer.feature(cv2.flip(aligned_face, 1))
 
 
 def describe_similarity(score):

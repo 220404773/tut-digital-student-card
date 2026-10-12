@@ -136,12 +136,24 @@ class CompareFacesTests(SimpleTestCase):
         find_faces.assert_called()
 
     @override_settings(FACE_COMPARISON_ENABLED=True)
+    def test_each_face_is_read_as_it_is_and_mirrored(self):
+        recognizer = FakeRecognizer(0.7)
+        readings = []
+        recognizer.feature = lambda aligned: readings.append(aligned) or aligned
+        with patch.object(face_checks, '_find_faces', return_value=[fake_face(50, 50, 200, 200)]),                 patch('cv2.FaceRecognizerSF.create', return_value=recognizer):
+            face_checks.compare_faces(image_file(noise=True), image_file(noise=True))
+        self.assertEqual(len(readings), 4)  # two photos, each read twice
+        self.assertTrue((readings[1] == readings[0][:, ::-1]).all())  # the second reading is the mirror image
+
+    @override_settings(FACE_COMPARISON_ENABLED=True)
     def test_a_missing_comparison_model_gives_no_advice(self):
         with patch.object(face_checks, '_model_ok', side_effect=lambda name: name != face_checks.COMPARISON_MODEL):
             self.assertIsNone(self._compare(0.9))
 
 
-@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True)
+# Automatic approval pinned off: these tests are about the advice staff see,
+# whatever a local .env switches on for a demo.
+@override_settings(MEDIA_ROOT=MEDIA, REQUIRE_PHOTO_FOR_CARD=True, FACE_AUTO_APPROVE_ENABLED=False)
 class FaceChecksInTheAppTests(TestCase):
     @classmethod
     def tearDownClass(cls):
