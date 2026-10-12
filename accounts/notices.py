@@ -26,7 +26,7 @@ REVOKED_NOTICE = (
 REISSUED_NOTICE = (
     'Your digital student card has been reissued with a new card number. Your old QR code, and any saved or '
     'printed copy of it, no longer works - use the card on your dashboard, and download the QR code again if '
-    'you need it.'
+    'you need it. If you added your card to Google Wallet, add the new one too.'
 )
 CLOSED_NOTICE = (
     'Your TUT Digital Student Card account has been closed by the student card office, and your digital card '

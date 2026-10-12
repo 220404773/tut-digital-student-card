@@ -8,8 +8,8 @@ Only *failed* logins count, and they count per email *and* network:
     {student_number}@tut4life.ac.za address from their own network only
     makes *themselves* wait; the student on their own network is unaffected.
   - Guessing spread across many networks is caught by a wider cap: once one
-    email collects ACCOUNT_FAILURES_PER_HOUR failures from anywhere within a
-    clock hour, it pauses for 15 minutes for everyone. A new pause can't
+    email collects ACCOUNT_FAILURES_PER_HOUR failures from anywhere within
+    the last 60 minutes, it pauses for 15 minutes for everyone. A new pause can't
     start within 60 minutes of the last one starting, and later failures
     don't extend a pause. So someone with several networks can still trip it
     on purpose, but for at most 15 minutes in any 60 - the accepted residual
@@ -45,9 +45,10 @@ def _pair_key(email, ip):
     return f'login_fail:{_email_id(email)}:{ip}'
 
 
-def _account_count_key(email, now):
-    # One counter per clock hour; it expires on its own.
-    return f'login_fail_account:{_email_id(email)}:{now:%Y%m%d%H}'
+def _account_failures_key(email):
+    # The times of the account's recent failures - a rolling 60 minutes, not
+    # a clock hour, so failures either side of the hour still add up.
+    return f'login_fail_account:{_email_id(email)}'
 
 
 def _account_pause_key(email):
@@ -82,10 +83,11 @@ def record_failed_login(email, ip):
     # Forgotten after a quiet day, so an old typo doesn't count against anyone.
     cache.set(_pair_key(email, ip), pair, 24 * 60 * 60)
 
-    count_key = _account_count_key(email, now)
-    count = (cache.get(count_key) or 0) + 1
-    cache.set(count_key, count, 60 * 60)
-    if count >= ACCOUNT_FAILURES_PER_HOUR:
+    failures_key = _account_failures_key(email)
+    recent = [moment for moment in (cache.get(failures_key) or []) if now - moment < timedelta(hours=1)]
+    recent = (recent + [now])[-ACCOUNT_FAILURES_PER_HOUR:]
+    cache.set(failures_key, recent, 60 * 60)
+    if len(recent) >= ACCOUNT_FAILURES_PER_HOUR:
         # A new pause only if none has started in the last 60 minutes - even
         # across a clock-hour boundary - and a running pause is never
         # extended by later failures.

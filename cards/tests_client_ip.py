@@ -101,6 +101,22 @@ class LoginProtectionTests(TestCase):
         self.assertContains(self._login('220404773@tut4life.ac.za', STUDENT, password='StrongPass123!'),
                             'Too many failed login attempts')
 
+    def test_failures_either_side_of_the_hour_still_add_up(self):
+        """They used to be counted per clock hour: 49 at 17:59 and 49 at
+        18:00 never reached the cap."""
+        from datetime import datetime, timezone as dt_timezone
+        from accounts import login_guard
+
+        email = '220404773@tut4life.ac.za'
+        for minute, count in ((59, 25), (0, 25)):
+            hour = 17 if minute == 59 else 18
+            moment = datetime(2026, 10, 12, hour, minute, 30, tzinfo=dt_timezone.utc)
+            with patch('accounts.login_guard.timezone.now', return_value=moment):
+                for number in range(count):
+                    login_guard.record_failed_login(email, f'192.0.2.{minute}{number}')
+                waiting = login_guard.login_wait_seconds(email, STUDENT)
+        self.assertGreater(waiting, 0)
+
     def test_the_account_pause_is_not_restarted_by_further_failures(self):
         """Round-2 finding: each failure after the cap restarted the 15-minute
         pause, so one attempt every 15 minutes kept a student locked out."""

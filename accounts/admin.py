@@ -160,6 +160,9 @@ class StudentUserAdmin(UserAdmin):
         if form is None:  # saved without a form: nothing to compare
             return
         changed = form.changed_data
+        if {'first_name', 'last_name', 'student_number'} & set(changed):
+            from cards.signals import sync_wallet_for_student
+            sync_wallet_for_student(obj)  # shown on the Wallet pass
         details = [str(form.fields[name].label).lower() for name in self.NOTIFIED_FIELDS if name in changed]
         if details:
             notify_student(obj, 'The student card office updated your ' + ', '.join(details) + '.',

@@ -28,6 +28,7 @@ from .utils import (
     render_card_qr_png,
 )
 from .google_wallet import build_google_wallet_save_url
+from .signals import sync_wallet_for_student
 from tut_student_card.client_ip import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -635,6 +636,7 @@ def resolve_name_change(request, user_id):
         previous = student.get_full_name_display()
         if action == 'approve':
             student.first_name, student.last_name = student.pending_first_name, student.pending_last_name
+            sync_wallet_for_student(student)  # the name is on the Wallet pass too
         requested = f'{student.pending_first_name} {student.pending_last_name}'.strip()
         student.pending_first_name = student.pending_last_name = ''
         student.name_change_requested_at = None
@@ -793,6 +795,7 @@ def resolve_review_request(request, review_id):
                 StudentCard.objects.filter(user=student).exclude(status='revoked').update(
                     expiry_date=end_date, status='active',
                 )
+                sync_wallet_for_student(student)  # update() skips the card's own signals
                 outcome = issue_card_if_allowed(student, request)
 
             review.status = 'approved' if action == 'approve' else 'declined'
