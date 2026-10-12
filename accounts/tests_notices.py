@@ -157,3 +157,79 @@ class StaffActionsAreCommunicatedTests(TestCase):
         StudentNotice.objects.filter(pk=notice.pk).update(created_at=timezone.now() - timedelta(days=60))
         call_command('purge_old_activity', stdout=io.StringIO())
         self.assertFalse(StudentNotice.objects.exists())
+
+
+class MessagesPanelTests(TestCase):
+    """Grouped like phone notifications: newest on top, "+N more", a count of
+    unread ones on the panel and on the bell, cleared once opened."""
+
+    def setUp(self):
+        from accounts.notices import notify_student
+
+        self.student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+            student_number='220404773', password='StrongPass123!', first_name='Kekeletso', last_name='Khaka',
+            is_verified=True, email_confirmed=True,
+        )
+        notify_student(self.student, 'Your new photo was not approved. Reason: Not the same person', 'warning', email=False)
+        notify_student(self.student, 'Your new photo was not approved. Reason: unclear pic', 'warning', email=False)
+        self.client.force_login(self.student)
+
+    def test_the_newest_is_on_top_with_the_rest_counted(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'Messages from the card office')
+        self.assertContains(response, '2 new')
+        self.assertContains(response, '+1 more message - tap to open')
+        content = response.content.decode()
+        preview = content[content.index('notice-preview-text'):]
+        self.assertLess(preview.index('unclear pic'), preview.index('Not the same person'))
+
+    def test_the_bell_shows_the_count_on_every_page(self):
+        response = self.client.get(reverse('profile'))
+        self.assertContains(response, 'fa-bell')
+        self.assertContains(response, f'href="{reverse("messages")}"')
+        self.assertContains(response, 'Messages from the card office, 2 new')
+
+    def test_opening_the_messages_clears_the_count(self):
+        self.client.post(reverse('mark_notices_read'))
+        self.assertFalse(StudentNotice.objects.filter(user=self.student, read_at__isnull=True).exists())
+        response = self.client.get(reverse('dashboard'))
+        self.assertNotContains(response, '2 new')
+        self.assertNotContains(response, 'nav-notice-count')
+        self.assertContains(response, 'unclear pic')  # still listed
+
+    def test_marking_read_needs_a_post_from_the_student(self):
+        self.assertEqual(self.client.get(reverse('mark_notices_read')).status_code, 405)
+        self.client.logout()
+        self.client.post(reverse('mark_notices_read'))
+        self.assertTrue(StudentNotice.objects.filter(read_at__isnull=True).exists())
+
+    def test_staff_have_no_bell(self):
+        staff = User.objects.create_superuser(username='admin@tut4life.ac.za', email='admin@tut4life.ac.za',
+                                              student_number='STAFF-0001', password='StrongPass123!')
+        self.client.force_login(staff)
+        self.assertNotContains(self.client.get(reverse('performance_dashboard')), 'fa-bell')
+
+    def test_the_dashboard_opens_at_most_two_then_links_to_the_messages_page(self):
+        from accounts.notices import notify_student
+
+        notify_student(self.student, 'Your card has been reissued.', 'warning', email=False)
+        self.client.get(reverse('dashboard'))  # the first visit also pops each one up once
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, '+2 more messages')
+        self.assertContains(response, 'See all 3 messages')
+        self.assertContains(response, 'Your card has been reissued.')
+        self.assertContains(response, 'unclear pic')
+        self.assertNotContains(response, 'Not the same person')  # the third: on the messages page only
+
+    def test_the_messages_page_lists_everything_and_marks_it_read(self):
+        response = self.client.get(reverse('messages'))
+        self.assertContains(response, 'Not the same person')
+        self.assertContains(response, 'unclear pic')
+        self.assertContains(response, '>New<')
+        self.assertFalse(StudentNotice.objects.filter(user=self.student, read_at__isnull=True).exists())
+        self.assertNotContains(self.client.get(reverse('messages')), '>New<')
+
+    def test_the_messages_page_is_for_students(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('messages')).status_code, 302)

@@ -4,6 +4,7 @@ from . import views
 urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('card/', views.view_card, name='view_card'),
+    path('messages/', views.messages_page, name='messages'),
     path('card/download/', views.download_qr_code, name='download_qr'),
     path('card/qr.png', views.card_qr_image, name='card_qr_image'),
     path('verify/<str:card_number>/', views.verify_card_public, name='verify_card_public'),

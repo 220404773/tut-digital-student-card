@@ -266,20 +266,55 @@
             </div>
 
             {% if notices %}
-            {# Stays after the pop-up has gone, so a decision can't be missed. #}
-            <div class="card mb-3">
-                <div class="card-header py-2">
+            {% comment %}
+                Grouped like phone notifications: the newest message on top of a stack,
+                "+N more" underneath, a count of unread ones on the title and on the bell in
+                the menu bar. Opening it shows them all and marks them read
+                (static/js/notices.js). Stays after the pop-up has gone, so a decision
+                can't be missed.
+            {% endcomment %}
+            <div class="card mb-3" id="messages" data-read-url="{% url 'mark_notices_read' %}" data-csrf="{{ csrf_token }}">
+                <div class="card-header py-2 d-flex align-items-center justify-content-between gap-2">
                     <h6 class="mb-0"><i class="fas fa-envelope-open-text" aria-hidden="true"></i> Messages from the card office</h6>
+                    {% if unread_notice_count %}
+                        <span class="badge rounded-pill bg-danger notice-count">{{ unread_notice_count }} new</span>
+                    {% endif %}
                 </div>
-                <ul class="list-group list-group-flush">
-                    {% for notice in notices %}
-                        <li class="list-group-item small py-2">
-                            <span class="badge text-bg-{% if notice.level == 'danger' %}danger{% elif notice.level == 'warning' %}warning{% elif notice.level == 'success' %}success{% else %}info{% endif %} me-1">{{ notice.get_level_display }}</span>
-                            {{ notice.text }}
-                            <span class="d-block text-muted">{{ notice.created_at|date:"d M Y, H:i" }}</span>
-                        </li>
-                    {% endfor %}
-                </ul>
+                <div class="card-body p-2">
+                    {% with latest=notices.0 more=notice_total|add:"-1" %}
+                    <button type="button" class="notice-stack{% if more %} notice-stack-many{% endif %}"
+                            data-bs-toggle="collapse" data-bs-target="#all-notices" aria-expanded="false" aria-controls="all-notices">
+                        <span class="notice-preview">
+                            <span class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="small fw-semibold">
+                                    {% if not latest.read_at %}<span class="notice-dot" aria-hidden="true"></span>{% endif %}
+                                    {{ latest.get_level_display }}
+                                </span>
+                                <span class="small text-muted">{{ latest.created_at|timesince }} ago</span>
+                            </span>
+                            <span class="d-block small notice-preview-text">{{ latest.text }}</span>
+                        </span>
+                        <span class="d-block small text-primary mt-2 notice-toggle-text">
+                            {% if more %}+{{ more }} more message{{ more|pluralize }} - tap to open{% else %}Tap to open{% endif %}
+                        </span>
+                    </button>
+                    {% endwith %}
+                    <ul class="collapse list-group list-group-flush mt-2" id="all-notices">
+                        {% for notice in notices %}
+                            <li class="list-group-item small py-2 px-1">
+                                <span class="badge text-bg-{% if notice.level == 'danger' %}danger{% elif notice.level == 'warning' %}warning{% elif notice.level == 'success' %}success{% else %}info{% endif %} me-1">{{ notice.get_level_display }}</span>
+                                {% if not notice.read_at %}<span class="visually-hidden">New: </span>{% endif %}
+                                {{ notice.text }}
+                                <span class="d-block text-muted">{{ notice.created_at|date:"d M Y, H:i" }}</span>
+                            </li>
+                        {% endfor %}
+                        {% if notice_total > 2 %}
+                            <li class="list-group-item small py-2 px-1 text-center">
+                                <a href="{% url 'messages' %}">See all {{ notice_total }} messages</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </div>
             </div>
             {% endif %}
 
@@ -302,4 +337,5 @@
     </div>
 </div>
 <script src="{% static 'js/live-card.js' %}" defer></script>
+<script src="{% static 'js/notices.js' %}" defer></script>
 {% endblock %}

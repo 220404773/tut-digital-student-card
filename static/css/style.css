@@ -122,3 +122,64 @@
 @media (prefers-reduced-motion: reduce) {
     .app-toast, .app-toast-leaving { animation: none; }
 }
+
+/* Messages from the card office (cards/templates/cards/dashboard.html):
+   stacked like grouped phone notifications. */
+.notice-stack {
+    position: relative;
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    padding: 0;
+}
+.notice-preview {
+    position: relative;
+    z-index: 2;
+    display: block;
+    padding: 0.6rem 0.75rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0.75rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+/* The cards peeking out underneath when there is more than one message. */
+.notice-stack-many::before,
+.notice-stack-many::after {
+    content: "";
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    height: 1rem;
+    background: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 0 0 0.75rem 0.75rem;
+}
+.notice-stack-many::before { top: calc(100% - 2.6rem); z-index: 1; }
+.notice-stack-many::after { top: calc(100% - 2.2rem); left: 1rem; right: 1rem; z-index: 0; }
+.notice-stack-many .notice-toggle-text { margin-top: 1.1rem !important; }
+.notice-stack[aria-expanded="true"] .notice-preview-text {
+    -webkit-line-clamp: unset;
+}
+.notice-preview-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.notice-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-right: 0.3rem;
+    border-radius: 50%;
+    background: #0d6efd;
+    vertical-align: middle;
+}
+.nav-notice-count {
+    position: absolute;
+    top: 0.1rem;
+    left: 1.1rem;
+    font-size: 0.65rem;
+}

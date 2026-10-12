@@ -221,10 +221,11 @@ class StudentNotice(models.Model):
     level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='info')
     text = models.TextField(max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
-    shown_at = models.DateTimeField(null=True, blank=True)
+    shown_at = models.DateTimeField(null=True, blank=True)  # popped up on the dashboard
+    read_at = models.DateTimeField(null=True, blank=True)  # opened in the messages panel
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-created_at', '-pk']
 
     def __str__(self):
         return f"{self.user.student_number} - {self.text[:50]}"

@@ -13,7 +13,7 @@
     <link href="{% static 'vendor/bootstrap-5.3.0/bootstrap.min.css' %}" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'vendor/fontawesome-6.4.0/css/all.min.css' %}">
     {# ?v= changes when style.css does, so browsers don't keep an old copy. #}
-    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=2">
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=3">
 
     <!-- PWA: installable "Add to Home Screen" support -->
     <link rel="manifest" href="{% static 'manifest.json' %}">
@@ -133,6 +133,13 @@
                             <li class="nav-item"><a class="nav-link" href="{% url 'dashboard' %}">Dashboard</a></li>
                             <li class="nav-item"><a class="nav-link" href="{% url 'view_card' %}">My Card</a></li>
                             <li class="nav-item"><a class="nav-link" href="{% url 'profile' %}">Profile</a></li>
+                            <li class="nav-item">
+                                <a class="nav-link position-relative" href="{% url 'messages' %}"
+                                   aria-label="Messages from the card office{% if unread_notice_count %}, {{ unread_notice_count }} new{% endif %}">
+                                    <i class="fas fa-bell" aria-hidden="true"></i><span class="d-lg-none ms-1">Messages</span>
+                                    {% if unread_notice_count %}<span class="badge rounded-pill bg-danger notice-count nav-notice-count" aria-hidden="true">{{ unread_notice_count }}</span>{% endif %}
+                                </a>
+                            </li>
                         {% endif %}
                         <li class="nav-item"><a class="nav-link" href="{% url 'logout' %}">Logout</a></li>
                     {% else %}

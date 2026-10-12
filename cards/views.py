@@ -72,7 +72,8 @@ def dashboard(request):
         'confirmation_cooldown_remaining': confirmation_cooldown_remaining(user) if not user.email_confirmed else 0,
         'google_wallet_save_url': google_wallet_save_url,
         # What the student card office has done on this account, newest first.
-        'notices': user.notices.all()[:5],
+        'notices': list(user.notices.all()[:2]),
+        'notice_total': user.notices.count(),
         # Most recent human-review request, so an unverified student sees
         # where their registration stands instead of a generic "pending".
         'latest_review': None if user.is_verified else (
@@ -83,6 +84,15 @@ def dashboard(request):
         'live_qr_refresh_seconds': settings.LIVE_QR_REFRESH_SECONDS,
     }
     return render(request, 'cards/dashboard.html', context)
+
+
+@student_required
+def messages_page(request):
+    """Every message from the card office, newest first - the dashboard shows
+    only the latest two. Opening it marks them all read."""
+    notices = list(request.user.notices.all()[:200])
+    request.user.notices.filter(read_at__isnull=True).update(read_at=timezone.now())
+    return render(request, 'cards/messages.html', {'notices': notices})
 
 
 @student_required

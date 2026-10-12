@@ -18,6 +18,7 @@ urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
     path('session-keepalive/', views.session_keepalive, name='session_keepalive'),
+    path('notices/read/', views.mark_notices_read, name='mark_notices_read'),
     path('profile/', views.profile, name='profile'),
     path('search/', views.user_search, name='user_search'),
     path('student/<int:student_id>/', views.student_detail, name='student_detail'),

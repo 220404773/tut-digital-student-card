@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+
+{% block title %}Messages - TUT Digital Student Card{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="container">
+        <h1>Messages from the card office</h1>
+        <p class="lead">Decisions and changes the student card office made on your account</p>
+    </div>
+</div>
+
+<div class="container py-3">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            {% if notices %}
+                <ul class="list-group">
+                    {% for notice in notices %}
+                        <li class="list-group-item py-3">
+                            <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
+                                <span>
+                                    <span class="badge text-bg-{% if notice.level == 'danger' %}danger{% elif notice.level == 'warning' %}warning{% elif notice.level == 'success' %}success{% else %}info{% endif %}">{{ notice.get_level_display }}</span>
+                                    {% if not notice.read_at %}<span class="badge rounded-pill bg-primary">New</span>{% endif %}
+                                </span>
+                                <small class="text-muted">{{ notice.created_at|date:"d M Y, H:i" }}</small>
+                            </div>
+                            {{ notice.text }}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="alert alert-info">No messages yet. When the student card office decides something on your account, it appears here.</div>
+            {% endif %}
+
+            <p class="text-center mt-3 mb-0">
+                <a href="{% url 'dashboard' %}">Back to Dashboard</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

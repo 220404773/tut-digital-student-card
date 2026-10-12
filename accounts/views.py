@@ -970,6 +970,14 @@ def logout_view(request):
 
 
 @login_required(login_url='login')
+@require_http_methods(['POST'])
+def mark_notices_read(request):
+    """Called when the student opens the messages panel: clears the count."""
+    request.user.notices.filter(read_at__isnull=True).update(read_at=timezone.now())
+    return JsonResponse({'unread': 0})
+
+
+@login_required(login_url='login')
 def session_keepalive(request):
     """Hit by the idle-timeout warning modal's "Stay signed in" button.
     Doesn't need to do anything itself - SESSION_SAVE_EVERY_REQUEST means
