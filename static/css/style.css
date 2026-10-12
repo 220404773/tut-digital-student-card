@@ -58,58 +58,47 @@
    greyed out so it can't be mistaken for a valid ID. */
 .card-superseded { filter: grayscale(1); opacity: 0.55; }
 
-/* Pop-up messages (static/js/toasts.js): float over the page in the top
-   right corner - across the top on a phone - so nothing below them moves. */
+/* Pop-up messages (static/js/toasts.js), styled like the "Install TUT Card"
+   pop-up: Bootstrap cards in the bottom-right corner, opposite that pop-up,
+   floating over the page so nothing below moves and the form stays usable.
+   On a phone the install pop-up has the bottom, so these sit at the top. */
 .toast-stack {
     position: fixed;
-    top: 1rem;
-    right: 1rem;
-    z-index: 1090;
+    right: 16px;
+    bottom: 16px;
+    z-index: 1060;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    width: min(380px, calc(100vw - 2rem));
+    width: min(360px, calc(100vw - 32px));
     pointer-events: none;
 }
 .app-toast {
-    --toast-colour: #0d6efd;
+    --toast-colour: #005DAA;
     position: relative;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.9rem 2.5rem 1rem 1rem;
-    background: #fff;
-    color: #212529;
-    border-radius: 0.75rem;
-    border-left: 5px solid var(--toast-colour);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
     overflow: hidden;
     pointer-events: auto;
-    font-size: 0.92rem;
-    line-height: 1.4;
     animation: app-toast-in 0.25s ease-out;
 }
 .app-toast-success { --toast-colour: #146c43; }
 .app-toast-info { --toast-colour: #005DAA; }
 .app-toast-warning { --toast-colour: #b35900; }
 .app-toast-danger { --toast-colour: #b02a37; }
-.app-toast-icon { color: var(--toast-colour); font-size: 1.3rem; margin-top: 0.1rem; }
-.app-toast-body { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.app-toast-title { display: block; margin-bottom: 0.15rem; color: var(--toast-colour); }
-.app-toast-close {
-    position: absolute;
-    top: 0.4rem;
-    right: 0.5rem;
-    width: 2rem;
-    height: 2rem;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    color: #6c757d;
-    font-size: 1.4rem;
-    line-height: 1;
+/* The coloured square where the install pop-up has the TUT logo. */
+.app-toast-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    background: var(--toast-colour);
+    color: #fff;
+    font-size: 1.35rem;
 }
-.app-toast-close:hover, .app-toast-close:focus-visible { background: #f1f3f5; color: #212529; }
+.app-toast-text { font-size: 0.875rem; overflow-wrap: anywhere; }
+.app-toast-close { flex-shrink: 0; font-size: 0.75rem; }
 /* Shrinks while the toast counts down to closing itself. */
 .app-toast-timer {
     position: absolute;
@@ -118,17 +107,17 @@
     height: 3px;
     width: 100%;
     background: var(--toast-colour);
-    opacity: 0.6;
     transform-origin: left;
     display: none;
 }
 .app-toast-timed .app-toast-timer { display: block; animation: app-toast-timer linear forwards; }
 .app-toast-leaving { animation: app-toast-out 0.2s ease-in forwards; }
-@keyframes app-toast-in { from { opacity: 0; transform: translateX(1.5rem); } to { opacity: 1; transform: none; } }
-@keyframes app-toast-out { to { opacity: 0; transform: translateX(1.5rem); } }
+@keyframes app-toast-in { from { opacity: 0; transform: translateY(1rem); } to { opacity: 1; transform: none; } }
+@keyframes app-toast-out { to { opacity: 0; transform: translateY(1rem); } }
 @keyframes app-toast-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @media (max-width: 576px) {
-    .toast-stack { top: 0.75rem; right: 1rem; left: 1rem; width: auto; }
+    .toast-stack { top: 16px; bottom: auto; left: 16px; right: 16px; width: auto; }
+    .app-toast-icon { width: 40px; height: 40px; font-size: 1.15rem; }
 }
 @media (prefers-reduced-motion: reduce) {
     .app-toast, .app-toast-leaving { animation: none; }

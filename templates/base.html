@@ -12,7 +12,8 @@
     {% endcomment %}
     <link href="{% static 'vendor/bootstrap-5.3.0/bootstrap.min.css' %}" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'vendor/fontawesome-6.4.0/css/all.min.css' %}">
-    <link rel="stylesheet" href="{% static 'css/style.css' %}">
+    {# ?v= changes when style.css does, so browsers don't keep an old copy. #}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=2">
 
     <!-- PWA: installable "Add to Home Screen" support -->
     <link rel="manifest" href="{% static 'manifest.json' %}">
@@ -150,14 +151,16 @@
     <div id="toast-stack" class="toast-stack">
         {% for message in messages %}
             {% with level=message.level_tag %}
-            <div class="app-toast app-toast-{{ level }}" data-level="{{ level }}"
+            <div class="app-toast app-toast-{{ level }} card shadow" data-level="{{ level }}"
                  role="{% if level == 'warning' or level == 'danger' %}alert{% else %}status{% endif %}">
-                <i class="fas {% if level == 'success' %}fa-circle-check{% elif level == 'warning' %}fa-triangle-exclamation{% elif level == 'danger' %}fa-circle-xmark{% else %}fa-circle-info{% endif %} app-toast-icon" aria-hidden="true"></i>
-                <div class="app-toast-body">
-                    <strong class="app-toast-title">{% if level == 'success' %}Done{% elif level == 'warning' %}Please check{% elif level == 'danger' %}Something went wrong{% else %}Notice{% endif %}</strong>
-                    <div>{{ message }}</div>
+                <div class="card-body d-flex gap-3 align-items-start">
+                    <span class="app-toast-icon" aria-hidden="true"><i class="fas {% if level == 'success' %}fa-circle-check{% elif level == 'warning' %}fa-triangle-exclamation{% elif level == 'danger' %}fa-circle-xmark{% else %}fa-circle-info{% endif %}"></i></span>
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1">{% if level == 'success' %}Done{% elif level == 'warning' %}Please check{% elif level == 'danger' %}Something went wrong{% else %}Notice{% endif %}</h6>
+                        <p class="mb-0 app-toast-text">{{ message }}</p>
+                    </div>
+                    <button type="button" class="btn-close app-toast-close" aria-label="Dismiss this message"></button>
                 </div>
-                <button type="button" class="app-toast-close" aria-label="Dismiss this message">&times;</button>
                 <div class="app-toast-timer"></div>
             </div>
             {% endwith %}
@@ -238,7 +241,7 @@
     
     <script src="{% static 'vendor/bootstrap-5.3.0/bootstrap.bundle.min.js' %}"></script>
     <script src="{% static 'js/confirm-submit.js' %}"></script>
-    <script src="{% static 'js/toasts.js' %}"></script>
+    <script src="{% static 'js/toasts.js' %}?v=2"></script>
     <script nonce="{{ request.csp_nonce }}">
         // Live password-confirmation feedback - checks as you type instead
         // of waiting for form submit. Covers every "password + confirm

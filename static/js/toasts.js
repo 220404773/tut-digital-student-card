@@ -1,5 +1,6 @@
-// Pop-up messages ("toasts") in a corner of the screen, floating over the
-// page so nothing below them moves. Used for Django's messages (rendered by
+// Pop-up messages ("toasts"), styled like the "Install TUT Card" pop-up:
+// a card in a bottom corner (the top on a phone), floating over the page so
+// nothing below them moves. Used for Django's messages (rendered by
 // templates/base.html into #toast-stack) and by page scripts through
 // window.showToast(level, text, {timeout: ms}) - a timeout of 0 keeps the
 // toast up until closed, or until the page calls toast.dismiss().
@@ -96,38 +97,48 @@
         if (!TITLES.hasOwnProperty(level)) {
             level = 'info';
         }
+        // Same structure as the server-rendered toasts in base.html, built
+        // from Bootstrap's card classes like the "Install TUT Card" pop-up.
         var toast = document.createElement('div');
-        toast.className = 'app-toast app-toast-' + level;
+        toast.className = 'app-toast app-toast-' + level + ' card shadow';
         toast.dataset.level = level;
         // Warnings and errors are announced straight away by screen readers.
         toast.setAttribute('role', level === 'warning' || level === 'danger' ? 'alert' : 'status');
 
-        var icon = document.createElement('i');
-        icon.className = 'fas ' + ICONS[level] + ' app-toast-icon';
-        icon.setAttribute('aria-hidden', 'true');
-
         var body = document.createElement('div');
-        body.className = 'app-toast-body';
-        var title = document.createElement('strong');
-        title.className = 'app-toast-title';
+        body.className = 'card-body d-flex gap-3 align-items-start';
+
+        var iconBox = document.createElement('span');
+        iconBox.className = 'app-toast-icon';
+        iconBox.setAttribute('aria-hidden', 'true');
+        var icon = document.createElement('i');
+        icon.className = 'fas ' + ICONS[level];
+        iconBox.appendChild(icon);
+
+        var textBox = document.createElement('div');
+        textBox.className = 'flex-grow-1';
+        var title = document.createElement('h6');
+        title.className = 'mb-1';
         title.textContent = TITLES[level];
-        var message = document.createElement('div');
+        var message = document.createElement('p');
+        message.className = 'mb-0 app-toast-text';
         message.textContent = text;  // text, never HTML
-        body.appendChild(title);
-        body.appendChild(message);
+        textBox.appendChild(title);
+        textBox.appendChild(message);
 
         var closeButton = document.createElement('button');
         closeButton.type = 'button';
-        closeButton.className = 'app-toast-close';
+        closeButton.className = 'btn-close app-toast-close';
         closeButton.setAttribute('aria-label', 'Dismiss this message');
-        closeButton.innerHTML = '&times;';
+
+        body.appendChild(iconBox);
+        body.appendChild(textBox);
+        body.appendChild(closeButton);
 
         var timer = document.createElement('div');
         timer.className = 'app-toast-timer';
 
-        toast.appendChild(icon);
         toast.appendChild(body);
-        toast.appendChild(closeButton);
         toast.appendChild(timer);
         stack().appendChild(toast);
         start(toast, options && options.timeout);

@@ -116,7 +116,7 @@ class MessagesAppearAsPopUpsTests(TestCase):
         with patch('accounts.views.process_registration_proof', return_value=result):
             response = self.client.post(reverse('signup'), signup_payload())
         content = response.content.decode()
-        self.assertRegex(content, r'<div id="toast-stack" class="toast-stack">\s*<div class="app-toast app-toast-warning"')
+        self.assertRegex(content, r'<div id="toast-stack" class="toast-stack">\s*<div class="app-toast app-toast-warning card shadow"')
         self.assertIn('role="alert"', content)
         self.assertIn('js/toasts', content)
         self.assertNotIn('alert-dismissible', content)
