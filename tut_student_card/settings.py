@@ -389,6 +389,8 @@ FACE_AUTO_APPROVE_ENABLED = config('FACE_AUTO_APPROVE_ENABLED', default=False, c
 # up, and raise it if staff ever reject a photo that scored this high.
 FACE_AUTO_APPROVE_MIN_SIMILARITY = config('FACE_AUTO_APPROVE_MIN_SIMILARITY', default=0.55, cast=float)
 AUTO_APPROVED_PHOTO_UNDO_DAYS = 30
+# Two automatic approvals may follow each other; the third change goes to a person.
+FACE_AUTO_APPROVE_MAX_IN_A_ROW = 2
 
 # The card's QR code carries a signed code that changes every
 # LIVE_QR_REFRESH_SECONDS; the verification page shows it as LIVE only while

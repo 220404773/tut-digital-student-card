@@ -115,7 +115,7 @@
                                 {% endif %}
                                 <small class="d-block text-muted">similarity {{ comparison.score }} - advice only, you decide</small>
                                 {% if face_auto_approve_enabled %}
-                                    <small class="d-block text-muted">Below the {{ auto_approve_min_similarity }} needed for automatic approval{% if student.photo_auto_approved_at %}, or the previous change was already automatic{% endif %}</small>
+                                    <small class="d-block text-muted">Below the {{ auto_approve_min_similarity }} needed for automatic approval{% if student.auto_approvals_in_a_row >= auto_approve_max_in_a_row %}, or {{ auto_approve_max_in_a_row }} automatic approvals in a row already{% elif student.auto_approvals_in_a_row %}, with this photo or the last one a person approved{% endif %}</small>
                                 {% endif %}
                             {% elif face_comparison_enabled and student.pending_photo_compare_consent %}
                                 <small class="text-muted">Couldn't compare (no clear face found) - compare by eye</small>

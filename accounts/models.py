@@ -34,13 +34,17 @@ class User(AbstractUser):
     # with consent), worked out once at upload - only the number is kept,
     # never the face measurements. Shown to staff as advice.
     pending_photo_similarity = models.FloatField(null=True, blank=True)
-    # A photo approved automatically (settings.FACE_AUTO_APPROVE_ENABLED):
-    # when, and the photo it replaced, kept for AUTO_APPROVED_PHOTO_UNDO_DAYS
-    # so staff can undo it. While photo_auto_approved_at is set, the next
-    # change always goes to a person - small automatic steps can't swap the
-    # face over gradually. A staff approval clears both.
+    # Photos approved automatically (settings.FACE_AUTO_APPROVE_ENABLED):
+    # when the latest was, and the photo it replaced, kept for
+    # AUTO_APPROVED_PHOTO_UNDO_DAYS so staff can undo it.
     photo_auto_approved_at = models.DateTimeField(null=True, blank=True)
     previous_profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
+    # At most FACE_AUTO_APPROVE_MAX_IN_A_ROW automatic approvals follow each
+    # other; then a person checks. Each one must also match the photo the run
+    # started from (the last one a person saw), so small automatic steps can't
+    # swap the face over gradually. A staff approval resets both.
+    auto_approvals_in_a_row = models.PositiveSmallIntegerField(default=0)
+    photo_before_automatic = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     # Likewise a name change after the card was issued: the name is printed on
     # the card, so it only changes once a staff member approves it.
     pending_first_name = models.CharField(max_length=150, blank=True, default='')

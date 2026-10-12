@@ -68,14 +68,19 @@ class PhotoDecisionTestCase(TestCase):
         StudentCard.objects.create(user=self.student, card_number='TUT-PHOTO-0001')
         return self.student.profile_picture.name
 
-    def _upload(self, colour='blue', consent=True, score=None):
-        """Upload a new photo as the student; score fakes the comparison."""
+    def _upload(self, colour='blue', consent=True, score=None, scores=None):
+        """Upload a new photo as the student; score fakes every comparison,
+        scores one per comparison (with the card photo, then with the photo
+        a run of automatic approvals started from)."""
         self.client.force_login(self.student)
         extra = {'profile_picture': photo(colour)}
         if consent:
             extra['face_compare_consent'] = 'on'
-        with patch('accounts.photo_changes.compare_faces',
-                   return_value=similarity(score) if score is not None else None) as compare:
+        if scores is not None:
+            fake = {'side_effect': [similarity(value) for value in scores]}
+        else:
+            fake = {'return_value': similarity(score) if score is not None else None}
+        with patch('accounts.photo_changes.compare_faces', **fake) as compare:
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(reverse('profile'), profile_form(**extra), follow=True)
         self.student.refresh_from_db()
@@ -208,27 +213,56 @@ class AutomaticApprovalTests(PhotoDecisionTestCase):
         self.assertTrue(self.student.pending_profile_picture)
         self.assertEqual(self.student.pending_photo_similarity, 0.95)
 
-    def test_never_twice_in_a_row(self):
-        """Small automatic steps must not be able to swap the face over."""
+    def test_two_in_a_row_are_allowed_and_the_third_waits_for_staff(self):
         self._give_card_with_photo()
         self._upload('blue', score=0.9)
-        after_first = self.student.profile_picture.name
         self._upload('green', score=0.9)
-        self.assertEqual(self.student.profile_picture.name, after_first)
+        self.assertEqual(self.student.auto_approvals_in_a_row, 2)
+        after_second = self.student.profile_picture.name
+        self._upload('yellow', score=0.9)
+        self.assertEqual(self.student.profile_picture.name, after_second)
         self.assertTrue(self.student.pending_profile_picture)
 
-    def test_a_staff_approval_allows_automatic_approval_again(self):
-        self._give_card_with_photo()
+    def test_the_second_must_also_match_the_photo_the_run_started_from(self):
+        """Two small steps must not add up to a different face."""
+        original = self._give_card_with_photo()
         self._upload('blue', score=0.9)
-        self._upload('green', score=0.9)  # waits, because the last one was automatic
+        after_first = self.student.profile_picture.name
+        self._upload('green', scores=[0.9, 0.3])  # like the last photo, not like the original
+        self.assertEqual(self.student.profile_picture.name, after_first)
+        self.assertTrue(self.student.pending_profile_picture)
+        self.assertEqual(self.student.photo_before_automatic.name, original)
+
+    def test_a_staff_approval_starts_a_new_run(self):
+        original = self._give_card_with_photo()
+        self._upload('blue', score=0.9)
+        self._upload('green', score=0.9)
+        self._upload('yellow', score=0.9)  # third: waits
         kept = self.student.previous_profile_picture.name
         self._staff_decides('resolve_photo_change', 'approve')
+        self.assertEqual(self.student.auto_approvals_in_a_row, 0)
         self.assertIsNone(self.student.photo_auto_approved_at)
         self.assertFalse(self.student.previous_profile_picture)
-        self.assertFalse(default_storage.exists(kept))
+        self.assertFalse(self.student.photo_before_automatic)
+        for name in (kept, original):
+            self.assertFalse(default_storage.exists(name), name)
         approved = self.student.profile_picture.name
-        self._upload('yellow', score=0.9)
+        self._upload('white', score=0.9)
         self.assertNotEqual(self.student.profile_picture.name, approved)
+
+    def test_undoing_the_second_keeps_the_photo_the_run_started_from(self):
+        original = self._give_card_with_photo()
+        self._upload('blue', score=0.9)
+        first = self.student.profile_picture.name
+        self._upload('green', score=0.9)
+        record = ReviewRequest.objects.filter(user=self.student, reason='photo_change').order_by('-resolved_at').first()
+        self.client.force_login(self.staff)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('undo_automatic_photo_approval', args=[record.pk]))
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.profile_picture.name, first)
+        self.assertTrue(default_storage.exists(original))
+        self.assertEqual(self.student.auto_approvals_in_a_row, 2)  # the undone one still counts
 
     def test_staff_can_undo_an_automatic_approval(self):
         original = self._give_card_with_photo()
@@ -296,7 +330,7 @@ class PhotoChangePerformanceTests(PhotoDecisionTestCase):
     def test_automatic_and_staff_decisions_are_counted(self):
         self._give_card_with_photo()
         self._upload('blue', score=0.9)            # automatic
-        self._upload('green', score=0.62)          # waits (never twice in a row)
+        self._upload('green', score=0.62)          # waits: below this test's 0.75
         self._staff_decides('resolve_photo_change', 'approve')
         stats = self._stats()
         self.assertEqual((stats['total'], stats['automatic'], stats['staff_approved']), (2, 1, 1))

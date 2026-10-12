@@ -32,17 +32,24 @@ def compare_with_card_photo(card_photo_name, storage, new_file):
         return None
 
 
-def can_approve_automatically(user, comparison):
-    """True if a new photo may go on the card without a person checking it."""
-    return bool(
-        settings.FACE_COMPARISON_ENABLED
-        and settings.FACE_AUTO_APPROVE_ENABLED
-        and comparison
-        and comparison['score'] >= settings.FACE_AUTO_APPROVE_MIN_SIMILARITY
-        # Never twice in a row: each automatic step is compared with the
-        # photo before it, so a chain of them could drift to another face.
-        and user.photo_auto_approved_at is None
-    )
+def can_approve_automatically(user, comparison, start_comparison=None):
+    """True if a new photo may go on the card without a person checking it.
+
+    comparison is with the card photo now. After an automatic approval,
+    start_comparison is with the photo the run of automatic approvals started
+    from - both must clear the threshold, so a chain of small steps can't
+    drift to another face. After FACE_AUTO_APPROVE_MAX_IN_A_ROW of them, a
+    person checks the next one whatever the score."""
+    minimum = settings.FACE_AUTO_APPROVE_MIN_SIMILARITY
+    if not (settings.FACE_COMPARISON_ENABLED and settings.FACE_AUTO_APPROVE_ENABLED and comparison):
+        return False
+    if comparison['score'] < minimum:
+        return False
+    if user.auto_approvals_in_a_row >= settings.FACE_AUTO_APPROVE_MAX_IN_A_ROW:
+        return False
+    if user.auto_approvals_in_a_row:
+        return bool(start_comparison and start_comparison['score'] >= minimum)
+    return True
 
 
 def decision_message(review):

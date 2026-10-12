@@ -26,6 +26,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from accounts.models import ReviewRequest, StudentNotice, User
@@ -50,8 +51,8 @@ class Command(BaseCommand):
             resolved_at__lt=cutoff,
         ).exclude(message='')
         undo_cutoff = timezone.now() - timedelta(days=settings.AUTO_APPROVED_PHOTO_UNDO_DAYS)
-        expired_undo_photos = User.objects.filter(photo_auto_approved_at__lt=undo_cutoff).exclude(
-            previous_profile_picture='').exclude(previous_profile_picture__isnull=True)
+        kept_photo = Q(previous_profile_picture__gt='') | Q(photo_before_automatic__gt='')
+        expired_undo_photos = User.objects.filter(kept_photo, photo_auto_approved_at__lt=undo_cutoff)
 
         if options['dry_run']:
             self.stdout.write(
@@ -66,8 +67,16 @@ class Command(BaseCommand):
         cleared = old_review_messages.update(message='')
         StudentNotice.objects.filter(created_at__lt=cutoff).delete()
         for student in expired_undo_photos:
-            student.previous_profile_picture.delete(save=False)
-            student.save(update_fields=['previous_profile_picture'])
+            # After the undo window neither the kept photo nor the run's
+            # starting photo is kept; the count stays, and without its
+            # starting photo a run can't continue - a person checks next.
+            current = student.profile_picture.name
+            for kept in {student.previous_profile_picture.name, student.photo_before_automatic.name}:
+                if kept and kept != current:
+                    student.profile_picture.storage.delete(kept)
+            student.previous_profile_picture = None
+            student.photo_before_automatic = None
+            student.save(update_fields=['previous_profile_picture', 'photo_before_automatic'])
         self.stdout.write(self.style.SUCCESS(
             f'Deleted {deleted} page visit(s), anonymised {anonymised} card activity row(s) and cleared '
             f'{cleared} review message(s) older than {days} days.'

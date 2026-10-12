@@ -1053,19 +1053,27 @@ def profile(request):
                     # (biometric data, POPIA s27); otherwise staff compare by eye.
                     consent = settings.FACE_COMPARISON_ENABLED and request.POST.get('face_compare_consent') == 'on'
                     comparison = compare_with_card_photo(current_photo, storage, upload) if consent else None
+                    start_comparison = None
+                    if comparison and updated.auto_approvals_in_a_row and updated.photo_before_automatic:
+                        start_comparison = compare_with_card_photo(updated.photo_before_automatic.name, storage, upload)
                     if updated.pending_profile_picture:
                         unused_photos.append(updated.pending_profile_picture.name)
                     updated.pending_profile_picture = None
                     updated.pending_photo_compare_consent = False
                     updated.pending_photo_similarity = None
-                    if can_approve_automatically(updated, comparison):
+                    if can_approve_automatically(updated, comparison, start_comparison):
                         # Clearly the same person: on the card now, with the
-                        # old photo kept so staff can undo it.
-                        if updated.previous_profile_picture:
-                            unused_photos.append(updated.previous_profile_picture.name)
+                        # old photo kept so staff can undo it, and the photo
+                        # the run started from kept to compare the next one.
+                        if not updated.auto_approvals_in_a_row:
+                            updated.photo_before_automatic = current_photo
+                        previous = updated.previous_profile_picture.name
+                        if previous and previous != updated.photo_before_automatic.name:
+                            unused_photos.append(previous)
                         updated.previous_profile_picture = current_photo
                         updated.profile_picture = upload
                         updated.photo_auto_approved_at = timezone.now()
+                        updated.auto_approvals_in_a_row += 1
                         auto_approved = comparison
                     else:
                         updated.pending_profile_picture = upload

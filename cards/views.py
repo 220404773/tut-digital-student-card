@@ -593,6 +593,7 @@ def report_review_requests(request):
         'face_comparison_enabled': settings.FACE_COMPARISON_ENABLED,
         'face_auto_approve_enabled': settings.FACE_COMPARISON_ENABLED and settings.FACE_AUTO_APPROVE_ENABLED,
         'auto_approve_min_similarity': settings.FACE_AUTO_APPROVE_MIN_SIMILARITY,
+        'auto_approve_max_in_a_row': settings.FACE_AUTO_APPROVE_MAX_IN_A_ROW,
         'undoable': undoable,
         'name_changes': students_with_name_changes(),
         'today': timezone.now().date(),
@@ -685,19 +686,23 @@ def resolve_photo_change(request, user_id):
         storage = student.pending_profile_picture.storage
         similarity = student.pending_photo_similarity
         if action == 'approve':
-            unused = [student.profile_picture.name, student.previous_profile_picture.name]
+            unused = {student.profile_picture.name, student.previous_profile_picture.name,
+                      student.photo_before_automatic.name} - {student.pending_profile_picture.name}
             student.profile_picture = student.pending_profile_picture.name
-            # A person has now checked the face: automatic approval may be
-            # used again next time, and there is nothing left to undo.
+            # A person has now checked the face: a new run of automatic
+            # approvals may start, and there is nothing left to undo.
             student.photo_auto_approved_at = None
             student.previous_profile_picture = None
+            student.auto_approvals_in_a_row = 0
+            student.photo_before_automatic = None
         else:
             unused = [student.pending_profile_picture.name]
         student.pending_profile_picture = None
         student.pending_photo_compare_consent = False
         student.pending_photo_similarity = None
         student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent',
-                                    'pending_photo_similarity', 'photo_auto_approved_at', 'previous_profile_picture'])
+                                    'pending_photo_similarity', 'photo_auto_approved_at', 'previous_profile_picture',
+                                    'auto_approvals_in_a_row', 'photo_before_automatic'])
         decision = ReviewRequest.record_card_change(
             student, 'photo_change', action == 'approve', request.user,
             note=request.POST.get('staff_note', '').strip()[:1000], similarity=similarity,
@@ -728,9 +733,12 @@ def undo_automatic_photo_approval(request, review_id):
             return redirect('report_review_requests')
         storage = student.profile_picture.storage
         unused = student.profile_picture.name
+        if unused == student.photo_before_automatic.name:
+            unused = None  # still needed to compare the next photo against
         student.profile_picture = student.previous_profile_picture.name
         student.previous_profile_picture = None
-        # photo_auto_approved_at stays set, so the next change goes to a person.
+        # The run's count stays: an undone approval still counts towards the
+        # number allowed in a row.
         student.save(update_fields=['profile_picture', 'previous_profile_picture'])
         review.message = f'{review.message} - undone by {request.user.email}'
         review.save(update_fields=['message'])
@@ -746,7 +754,8 @@ def undo_automatic_photo_approval(request, review_id):
             "photo again." + (f' Reason: {note}' if note else ''),
             level='warning', request=request,
         )
-        transaction.on_commit(lambda: storage.delete(unused))
+        if unused:
+            transaction.on_commit(lambda: storage.delete(unused))
     messages.success(request, f"Undone - {student.get_full_name_display()}'s card shows their previous photo again.")
     return redirect('report_review_requests')
 
