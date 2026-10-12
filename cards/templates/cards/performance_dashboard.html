@@ -449,35 +449,12 @@
                     <a href="{% url 'report_review_requests' %}" class="tile-link">
                         <div class="card bg-info text-dark">
                             <div class="card-body">
-                                <h6 class="card-title">Compared (with consent)</h6>
+                                <h6 class="card-title">Compared Automatically</h6>
                                 <h3>{{ photo_stats.compared }} <small class="fs-6">({{ photo_stats.compared_rate|floatformat:0 }}%)</small></h3>
-                                <small>The rest were compared by eye</small>
+                                <small>{% if photo_stats.comparison_on %}Students who consented - staff compared the rest by eye{% else %}Face comparison is off - staff compare by eye{% endif %}</small>
                             </div>
                         </div>
                     </a>
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <div class="card h-100">
-                        <div class="card-body">
-                            <h6 class="card-title">Average similarity</h6>
-                            <p class="mb-1">Approved photos: <strong>{{ photo_stats.avg_similarity_approved|floatformat:2|default:"-" }}</strong></p>
-                            <p class="mb-0">Rejected photos: <strong>{{ photo_stats.avg_similarity_rejected|floatformat:2|default:"-" }}</strong></p>
-                            <small class="text-muted">The further apart these are, the better the comparison separates the same person from someone else.</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="col-md-6 mb-3">
-                    <div class="card h-100 {% if photo_stats.rejected_above_threshold %}border-danger{% endif %}">
-                        <div class="card-body">
-                            <h6 class="card-title">Is the threshold right?</h6>
-                            <p class="mb-1">Approved by staff, but below {{ photo_stats.threshold }}: <strong>{{ photo_stats.approved_below_threshold }}</strong>
-                                <small class="text-muted">- genuine matches automatic approval missed</small></p>
-                            <p class="mb-0 {% if photo_stats.rejected_above_threshold %}text-danger fw-bold{% endif %}">Rejected by staff, but {{ photo_stats.threshold }} or above: <strong>{{ photo_stats.rejected_above_threshold }}</strong>
-                                <small class="{% if photo_stats.rejected_above_threshold %}text-danger{% else %}text-muted{% endif %}">- would have been approved automatically; any at all means the threshold is too low</small></p>
-                        </div>
-                    </div>
                 </div>
 
                 {% if photo_stats.recent %}

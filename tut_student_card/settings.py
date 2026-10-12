@@ -382,7 +382,11 @@ FACE_COMPARISON_ENABLED = config('FACE_COMPARISON_ENABLED', default=False, cast=
 # Anything below waits for a person, and nothing is ever rejected
 # automatically (POPIA s71). Off by default - switch on to demonstrate it.
 FACE_AUTO_APPROVE_ENABLED = config('FACE_AUTO_APPROVE_ENABLED', default=False, cast=bool)
-FACE_AUTO_APPROVE_MIN_SIMILARITY = config('FACE_AUTO_APPROVE_MIN_SIMILARITY', default=0.75, cast=float)
+# 0.55: in a test with real photos, the same person in different photos
+# (hats, glasses, backgrounds) scored 0.53-0.74 and different people 0.00 or
+# below. Check the Photo Change Performance section as real decisions build
+# up, and raise it if staff ever reject a photo that scored this high.
+FACE_AUTO_APPROVE_MIN_SIMILARITY = config('FACE_AUTO_APPROVE_MIN_SIMILARITY', default=0.55, cast=float)
 AUTO_APPROVED_PHOTO_UNDO_DAYS = 30
 
 # The card's QR code carries a signed code that changes every

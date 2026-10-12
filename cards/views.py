@@ -179,10 +179,8 @@ def verify_card_public(request, card_number):
 
 
 def _photo_change_stats():
-    """How photo changes on issued cards were decided, and how the face
-    comparison's similarity scores line up with those decisions - the
-    evidence for choosing FACE_AUTO_APPROVE_MIN_SIMILARITY."""
-    threshold = settings.FACE_AUTO_APPROVE_MIN_SIMILARITY
+    """How photo changes on issued cards were decided, and how often the
+    face comparison was used."""
     decisions = ReviewRequest.objects.filter(reason='photo_change')
     undo_records = decisions.filter(message='Automatic approval undone')
     by_staff = decisions.filter(resolved_by__isnull=False).exclude(pk__in=undo_records)
@@ -191,9 +189,6 @@ def _photo_change_stats():
     automatic = decisions.filter(resolved_by__isnull=True, status='approved')
     total = automatic.count() + by_staff.count()
     compared = decisions.exclude(pk__in=undo_records).filter(similarity__isnull=False)
-
-    def average(queryset):
-        return queryset.filter(similarity__isnull=False).aggregate(avg=Avg('similarity'))['avg']
 
     return {
         'total': total,
@@ -205,17 +200,7 @@ def _photo_change_stats():
         'staff_rejected': staff_rejected.count(),
         'compared': compared.count(),
         'compared_rate': compared.count() * 100 / total if total else 0,
-        'avg_similarity_approved': average(decisions.filter(status='approved').exclude(pk__in=undo_records)),
-        'avg_similarity_rejected': average(staff_rejected),
-        # A person approved these, but the score was under the threshold:
-        # matches automatic approval missed. Many of them suggest the
-        # threshold is stricter than it needs to be.
-        'approved_below_threshold': staff_approved.filter(similarity__lt=threshold).count(),
-        # A person rejected these although the score cleared the threshold:
-        # what automatic approval would have let through. Any at all means
-        # the threshold is too low.
-        'rejected_above_threshold': staff_rejected.filter(similarity__gte=threshold).count(),
-        'threshold': threshold,
+        'threshold': settings.FACE_AUTO_APPROVE_MIN_SIMILARITY,
         'comparison_on': settings.FACE_COMPARISON_ENABLED,
         'automatic_on': settings.FACE_COMPARISON_ENABLED and settings.FACE_AUTO_APPROVE_ENABLED,
         'recent': decisions.select_related('user', 'resolved_by').order_by('-resolved_at')[:10],

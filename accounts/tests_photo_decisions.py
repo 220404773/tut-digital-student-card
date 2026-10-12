@@ -300,16 +300,17 @@ class PhotoChangePerformanceTests(PhotoDecisionTestCase):
         self._staff_decides('resolve_photo_change', 'approve')
         stats = self._stats()
         self.assertEqual((stats['total'], stats['automatic'], stats['staff_approved']), (2, 1, 1))
-        self.assertEqual(stats['approved_below_threshold'], 1)  # 0.62 was a genuine match
-        self.assertEqual(stats['rejected_above_threshold'], 0)
+        self.assertEqual((stats['compared'], stats['compared_rate']), (2, 100))
 
-    def test_a_rejection_above_the_threshold_is_flagged(self):
+    @override_settings(FACE_COMPARISON_ENABLED=False)
+    def test_with_comparison_off_the_tile_says_staff_compare_by_eye(self):
         self._give_card_with_photo()
-        User.objects.filter(pk=self.student.pk).update(photo_auto_approved_at=timezone.now())
-        self.student.refresh_from_db()
-        self._upload(score=0.8)                    # waits: the previous change was automatic
-        self._staff_decides('resolve_photo_change', 'reject')
-        self.assertEqual(self._stats()['rejected_above_threshold'], 1)
+        self._upload(consent=False)
+        self._staff_decides('resolve_photo_change', 'approve')
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('performance_dashboard'))
+        self.assertContains(response, 'Face comparison is off - staff compare by eye')
+        self.assertNotContains(response, 'Is the threshold right?')
 
     def test_the_reason_box_shows_the_whole_text(self):
         self._give_card_with_photo()
