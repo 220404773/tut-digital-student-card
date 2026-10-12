@@ -220,6 +220,17 @@ class FaceChecksInTheAppTests(TestCase):
         self._with_card_and_photo()
         self.assertNotContains(self.client.get(reverse('profile')), 'face_compare_consent')
 
+    @override_settings(FACE_COMPARISON_ENABLED=True, FACE_AUTO_APPROVE_ENABLED=True)
+    def test_the_choice_stands_out_but_is_never_made_for_the_student(self):
+        import re
+
+        self._with_card_and_photo()
+        content = self.client.get(reverse('profile')).content.decode()
+        self.assertIn('consent-option', content)
+        self.assertIn('Get your new photo approved faster', content)
+        switch = re.search(r'<input[^>]*name="face_compare_consent"[^>]*>', content).group(0)
+        self.assertNotIn('checked', switch)
+
     @override_settings(FACE_COMPARISON_ENABLED=True)
     def test_consent_is_recorded_only_when_given(self):
         self._with_card_and_photo()

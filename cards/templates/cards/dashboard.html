@@ -267,55 +267,52 @@
 
             {% if notices %}
             {% comment %}
-                Grouped like phone notifications: the newest message on top of a stack,
-                "+N more" underneath, a count of unread ones on the title and on the bell in
-                the menu bar. Opening it shows them all and marks them read
-                (static/js/notices.js). Stays after the pop-up has gone, so a decision
-                can't be missed.
+                One message at a time, swiped (or the arrows) to the next - the newest two,
+                then a card linking to the Messages page if there are more. The count of
+                unread ones is on the title and on the bell in the menu bar; it clears once
+                the panel has been on screen for a moment (static/js/notices.js).
             {% endcomment %}
-            <div class="card mb-3" id="messages" data-read-url="{% url 'mark_notices_read' %}" data-csrf="{{ csrf_token }}">
+            <section class="card mb-3" id="messages" aria-labelledby="messages-title"
+                     data-read-url="{% url 'mark_notices_read' %}" data-csrf="{{ csrf_token }}">
                 <div class="card-header py-2 d-flex align-items-center justify-content-between gap-2">
-                    <h6 class="mb-0"><i class="fas fa-envelope-open-text" aria-hidden="true"></i> Messages from the card office</h6>
+                    <h6 class="mb-0" id="messages-title"><i class="fas fa-envelope-open-text" aria-hidden="true"></i> Messages from the card office</h6>
                     {% if unread_notice_count %}
                         <span class="badge rounded-pill bg-danger notice-count">{{ unread_notice_count }} new</span>
                     {% endif %}
                 </div>
                 <div class="card-body p-2">
-                    {% with latest=notices.0 more=notice_total|add:"-1" %}
-                    <button type="button" class="notice-stack{% if more %} notice-stack-many{% endif %}"
-                            data-bs-toggle="collapse" data-bs-target="#all-notices" aria-expanded="false" aria-controls="all-notices">
-                        <span class="notice-preview">
-                            <span class="d-flex justify-content-between align-items-center mb-1">
-                                <span class="small fw-semibold">
-                                    {% if not latest.read_at %}<span class="notice-dot" aria-hidden="true"></span>{% endif %}
-                                    {{ latest.get_level_display }}
-                                </span>
-                                <span class="small text-muted">{{ latest.created_at|timesince }} ago</span>
-                            </span>
-                            <span class="d-block small notice-preview-text">{{ latest.text }}</span>
-                        </span>
-                        <span class="d-block small text-primary mt-2 notice-toggle-text">
-                            {% if more %}+{{ more }} more message{{ more|pluralize }} - tap to open{% else %}Tap to open{% endif %}
-                        </span>
-                    </button>
-                    {% endwith %}
-                    <ul class="collapse list-group list-group-flush mt-2" id="all-notices">
+                    <div class="notice-carousel" tabindex="0" aria-label="Messages - swipe or use the arrows to see the next one">
                         {% for notice in notices %}
-                            <li class="list-group-item small py-2 px-1">
-                                <span class="badge text-bg-{% if notice.level == 'danger' %}danger{% elif notice.level == 'warning' %}warning{% elif notice.level == 'success' %}success{% else %}info{% endif %} me-1">{{ notice.get_level_display }}</span>
-                                {% if not notice.read_at %}<span class="visually-hidden">New: </span>{% endif %}
-                                {{ notice.text }}
-                                <span class="d-block text-muted">{{ notice.created_at|date:"d M Y, H:i" }}</span>
-                            </li>
+                            <article class="notice-slide" aria-label="Message {{ forloop.counter }} of {{ notices|length }}">
+                                <div class="d-flex justify-content-between align-items-center mb-1 gap-2">
+                                    <span class="small fw-semibold">
+                                        {% if not notice.read_at %}<span class="notice-dot" aria-hidden="true"></span><span class="visually-hidden">New: </span>{% endif %}
+                                        {{ notice.get_level_display }}
+                                    </span>
+                                    <span class="small text-muted text-nowrap">{{ notice.created_at|timesince }} ago</span>
+                                </div>
+                                <p class="small mb-0 notice-text">{{ notice.text }}</p>
+                            </article>
                         {% endfor %}
                         {% if notice_total > 2 %}
-                            <li class="list-group-item small py-2 px-1 text-center">
-                                <a href="{% url 'messages' %}">See all {{ notice_total }} messages</a>
-                            </li>
+                            <a class="notice-slide notice-slide-more" href="{% url 'messages' %}">
+                                <span class="fw-semibold">See all {{ notice_total }} messages</span>
+                                <span class="small text-muted">Older messages are on the Messages page</span>
+                            </a>
                         {% endif %}
-                    </ul>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2 px-1">
+                        <button type="button" class="btn btn-sm btn-light notice-prev" aria-label="Previous message" disabled>
+                            <i class="fas fa-chevron-left" aria-hidden="true"></i>
+                        </button>
+                        <span class="notice-dots" aria-hidden="true"></span>
+                        <span class="small text-muted notice-position" aria-live="polite"></span>
+                        <button type="button" class="btn btn-sm btn-light notice-next" aria-label="Next message">
+                            <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                        </button>
+                    </div>
                 </div>
-            </div>
+            </section>
             {% endif %}
 
             {% if student_card %}
@@ -337,5 +334,5 @@
     </div>
 </div>
 <script src="{% static 'js/live-card.js' %}" defer></script>
-<script src="{% static 'js/notices.js' %}" defer></script>
+<script src="{% static 'js/notices.js' %}?v=2" defer></script>
 {% endblock %}

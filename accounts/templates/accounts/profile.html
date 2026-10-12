@@ -61,14 +61,26 @@
                         </div>
 
                         {% if photo_locked and face_comparison_enabled %}
-                            <div class="form-check mb-2 small">
-                                <input class="form-check-input" type="checkbox" name="face_compare_consent" id="face-compare-consent">
-                                <label class="form-check-label" for="face-compare-consent">
-                                    Compare my new photo with my card photo using face recognition. Nothing biometric is kept
-                                    (<a href="{% url 'privacy' %}" target="_blank" rel="noopener">Privacy Policy</a>).
+                            {% comment %}
+                                A card of its own so it isn't missed - but never ticked in advance:
+                                comparing faces is biometric processing, so it must be the student's
+                                own choice (POPIA s27).
+                            {% endcomment %}
+                            <div class="consent-option mb-3">
+                                <div class="form-check form-switch mb-1">
+                                    <input class="form-check-input" type="checkbox" role="switch" name="face_compare_consent"
+                                           id="face-compare-consent" aria-describedby="face-compare-help">
+                                    <label class="form-check-label fw-semibold" for="face-compare-consent">
+                                        <i class="fas fa-bolt text-warning" aria-hidden="true"></i>
+                                        {% if face_auto_approve_enabled %}Get your new photo approved faster{% else %}Help staff check your new photo{% endif %}
+                                    </label>
+                                </div>
+                                <p class="small mb-0" id="face-compare-help">
+                                    Compare my new photo with my card photo using face recognition.
                                     {% if face_auto_approve_enabled %}If they clearly match, my card updates straight away.{% endif %}
+                                    Nothing biometric is kept (<a href="{% url 'privacy' %}" target="_blank" rel="noopener">Privacy Policy</a>).
                                     Optional - otherwise a staff member checks it by eye.
-                                </label>
+                                </p>
                             </div>
                         {% endif %}
 

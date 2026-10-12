@@ -179,10 +179,12 @@ class MessagesPanelTests(TestCase):
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, 'Messages from the card office')
         self.assertContains(response, '2 new')
-        self.assertContains(response, '+1 more message - tap to open')
+        self.assertContains(response, 'aria-label="Message 1 of 2"')
+        self.assertContains(response, 'aria-label="Message 2 of 2"')
+        self.assertContains(response, 'Next message')
         content = response.content.decode()
-        preview = content[content.index('notice-preview-text'):]
-        self.assertLess(preview.index('unclear pic'), preview.index('Not the same person'))
+        strip = content[content.index('notice-carousel'):]
+        self.assertLess(strip.index('unclear pic'), strip.index('Not the same person'))  # newest first
 
     def test_the_bell_shows_the_count_on_every_page(self):
         response = self.client.get(reverse('profile'))
@@ -216,7 +218,7 @@ class MessagesPanelTests(TestCase):
         notify_student(self.student, 'Your card has been reissued.', 'warning', email=False)
         self.client.get(reverse('dashboard'))  # the first visit also pops each one up once
         response = self.client.get(reverse('dashboard'))
-        self.assertContains(response, '+2 more messages')
+        self.assertContains(response, 'class="notice-slide"', count=2)  # two messages, one at a time
         self.assertContains(response, 'See all 3 messages')
         self.assertContains(response, 'Your card has been reissued.')
         self.assertContains(response, 'unclear pic')

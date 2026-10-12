@@ -124,49 +124,42 @@
 }
 
 /* Messages from the card office (cards/templates/cards/dashboard.html):
-   stacked like grouped phone notifications. */
-.notice-stack {
-    position: relative;
-    display: block;
-    width: 100%;
-    text-align: left;
-    border: 0;
-    background: transparent;
-    padding: 0;
+   one message at a time, swiped sideways like phone notifications. */
+.notice-carousel {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    padding: 0.15rem;
 }
-.notice-preview {
-    position: relative;
-    z-index: 2;
-    display: block;
-    padding: 0.6rem 0.75rem;
+.notice-carousel::-webkit-scrollbar { display: none; }
+.notice-carousel:focus-visible { outline: 2px solid #005DAA; border-radius: 0.75rem; }
+.notice-slide {
+    flex: 0 0 100%;
+    scroll-snap-align: start;
+    min-height: 6.5rem;
+    padding: 0.65rem 0.8rem;
     background: #fff;
     border: 1px solid #dee2e6;
     border-radius: 0.75rem;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
-/* The cards peeking out underneath when there is more than one message. */
-.notice-stack-many::before,
-.notice-stack-many::after {
-    content: "";
-    position: absolute;
-    left: 0.5rem;
-    right: 0.5rem;
-    height: 1rem;
-    background: #fff;
-    border: 1px solid #dee2e6;
-    border-radius: 0 0 0.75rem 0.75rem;
-}
-.notice-stack-many::before { top: calc(100% - 2.6rem); z-index: 1; }
-.notice-stack-many::after { top: calc(100% - 2.2rem); left: 1rem; right: 1rem; z-index: 0; }
-.notice-stack-many .notice-toggle-text { margin-top: 1.1rem !important; }
-.notice-stack[aria-expanded="true"] .notice-preview-text {
-    -webkit-line-clamp: unset;
-}
-.notice-preview-text {
+.notice-text {
     display: -webkit-box;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+.notice-slide-more {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.25rem;
+    text-align: center;
+    text-decoration: none;
 }
 .notice-dot {
     display: inline-block;
@@ -177,9 +170,31 @@
     background: #0d6efd;
     vertical-align: middle;
 }
+.notice-dots { display: flex; gap: 0.35rem; }
+.notice-dots span {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: #ced4da;
+}
+.notice-dots span.active { background: #005DAA; }
+@media (prefers-reduced-motion: reduce) {
+    .notice-carousel { scroll-behavior: auto; }
+}
 .nav-notice-count {
     position: absolute;
     top: 0.1rem;
     left: 1.1rem;
     font-size: 0.65rem;
 }
+
+/* Profile page: the face-comparison choice, in its own card so it isn't
+   missed (accounts/templates/accounts/profile.html). */
+.consent-option {
+    padding: 0.75rem 0.9rem;
+    border: 2px solid #005DAA;
+    border-radius: 0.75rem;
+    background: #eef5fc;
+}
+.consent-option .form-check-input { width: 2.5em; height: 1.3em; cursor: pointer; }
+.consent-option .form-check-label { cursor: pointer; padding-left: 0.25rem; }
