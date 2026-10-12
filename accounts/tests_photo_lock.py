@@ -204,6 +204,33 @@ class PhotoLockTests(TestCase):
         self.student.refresh_from_db()
         self.assertEqual(self.student.profile_picture.name, approved)
 
+    def test_a_photo_decision_is_recorded_under_recent_decisions(self):
+        self._student_with_card()
+        self._upload_photo('blue')
+        self.client.force_login(self.staff)
+        self.client.post(reverse('resolve_photo_change', args=[self.student.pk]), {'action': 'approve'})
+        record = ReviewRequest.objects.get(user=self.student, reason='photo_change')
+        self.assertEqual((record.status, record.resolved_by), ('approved', self.staff))
+        self.assertIsNotNone(record.resolved_at)
+        response = self.client.get(reverse('report_review_requests'))
+        self.assertContains(response, 'New card photo')
+        self.assertNotContains(response, 'No decisions yet')
+
+    def test_a_rejected_photo_is_recorded_as_declined(self):
+        self._student_with_card()
+        self._upload_photo('blue')
+        self.client.force_login(self.staff)
+        self.client.post(reverse('resolve_photo_change', args=[self.student.pk]), {'action': 'reject'})
+        self.assertEqual(ReviewRequest.objects.get(user=self.student, reason='photo_change').status, 'declined')
+
+    def test_a_recorded_decision_does_not_count_as_waiting(self):
+        self._student_with_card()
+        self._upload_photo('blue')
+        self.client.force_login(self.staff)
+        self.client.post(reverse('resolve_photo_change', args=[self.student.pk]), {'action': 'approve'})
+        stats = self.client.get(reverse('performance_dashboard')).context['card_stats']
+        self.assertEqual(stats['pending_total_count'], 0)
+
     @override_settings(REQUIRE_PHOTO_FOR_CARD=False)
     def test_the_lock_can_be_switched_off_for_an_offline_demo(self):
         self.assertEqual(issue_card_if_allowed(self.student), 'issued')
@@ -297,6 +324,15 @@ class NameLockTests(TestCase):
         self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
         self.student.refresh_from_db()
         self.assertEqual(self.student.first_name, 'Kekeletso')
+
+    def test_a_name_decision_is_recorded_with_the_old_and_new_name(self):
+        self._give_card()
+        self._save_profile(first_name='Keke', last_name='Khaka')
+        self.client.force_login(self.staff)
+        self.client.post(reverse('resolve_name_change', args=[self.student.pk]), {'action': 'approve'})
+        record = ReviewRequest.objects.get(user=self.student, reason='name_change')
+        self.assertEqual(record.status, 'approved')
+        self.assertEqual(record.staff_note, 'Kekeletso Khaka -> Keke Khaka')
 
     def test_the_profile_page_shows_the_requested_name_while_it_waits(self):
         self._give_card()

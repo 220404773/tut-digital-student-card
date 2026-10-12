@@ -69,7 +69,9 @@ def dashboard(request):
         'google_wallet_save_url': google_wallet_save_url,
         # Most recent human-review request, so an unverified student sees
         # where their registration stands instead of a generic "pending".
-        'latest_review': None if user.is_verified else ReviewRequest.objects.filter(user=user).first(),
+        'latest_review': None if user.is_verified else (
+            ReviewRequest.objects.filter(user=user).exclude(reason__in=ReviewRequest.CARD_CHANGE_REASONS).first()
+        ),
         # The card waits for a photo (settings.REQUIRE_PHOTO_FOR_CARD).
         'photo_needed': settings.REQUIRE_PHOTO_FOR_CARD and not user.profile_picture,
         'live_qr_refresh_seconds': settings.LIVE_QR_REFRESH_SECONDS,
@@ -266,6 +268,13 @@ def performance_dashboard(request):
         'pending_photo_changes_count': students_with_photo_changes().count(),
         'pending_name_changes_count': students_with_name_changes().count(),
     }
+    # The tile's headline is everything waiting for a staff decision on the
+    # review page, with the kinds listed underneath - registration reviews
+    # alone read "0" while a photo change was waiting.
+    card_stats['pending_total_count'] = (
+        card_stats['pending_reviews_count'] + card_stats['pending_photo_changes_count']
+        + card_stats['pending_name_changes_count']
+    )
 
     # Site traffic
     total_visits = PageVisit.objects.count()
@@ -514,7 +523,8 @@ def report_review_requests(request):
     """Students the automated check didn't verify, waiting for a person to
     decide (POPIA s71). Pending requests first, then recent decisions."""
     pending = ReviewRequest.objects.filter(status='pending').select_related('user').order_by('created_at')
-    resolved = ReviewRequest.objects.exclude(status='pending').select_related('user', 'resolved_by')[:50]
+    resolved = (ReviewRequest.objects.exclude(status='pending').select_related('user', 'resolved_by')
+                .order_by('-resolved_at')[:50])
     return render(request, 'cards/report_review_requests.html', {
         'pending': pending,
         'resolved': resolved,
@@ -566,6 +576,7 @@ def resolve_name_change(request, user_id):
         if not student.name_change_requested_at:
             messages.info(request, 'That name change has already been decided.')
             return redirect('report_review_requests')
+        previous = student.get_full_name_display()
         if action == 'approve':
             student.first_name, student.last_name = student.pending_first_name, student.pending_last_name
         requested = f'{student.pending_first_name} {student.pending_last_name}'.strip()
@@ -573,6 +584,9 @@ def resolve_name_change(request, user_id):
         student.name_change_requested_at = None
         student.save(update_fields=['first_name', 'last_name', 'pending_first_name', 'pending_last_name',
                                     'name_change_requested_at'])
+        ReviewRequest.record_card_change(
+            student, 'name_change', action == 'approve', request.user, note=f'{previous} -> {requested}',
+        )
     if action == 'approve':
         messages.success(request, f'Approved the name change - the card now shows {requested}.')
     else:
@@ -607,6 +621,7 @@ def resolve_photo_change(request, user_id):
         student.pending_profile_picture = None
         student.pending_photo_compare_consent = False
         student.save(update_fields=['profile_picture', 'pending_profile_picture', 'pending_photo_compare_consent'])
+        ReviewRequest.record_card_change(student, 'photo_change', action == 'approve', request.user)
         if unused:
             transaction.on_commit(lambda: storage.delete(unused))
     if action == 'approve':

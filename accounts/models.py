@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.utils import timezone
 
 
 class User(AbstractUser):
@@ -117,7 +118,13 @@ class ReviewRequest(models.Model):
         ('document_rejected', 'Document rejected as not a TUT proof of registration'),
         ('student_request', 'Student asked for a review'),
         ('suspicious_content', 'Document text appeared to give instructions to the AI'),
+        # Changes to an issued card, recorded once staff decide them so the
+        # decision shows with the others (who, when, what). Never pending:
+        # while waiting they live in the pending_* fields on the student.
+        ('photo_change', 'New card photo'),
+        ('name_change', 'Name change'),
     ]
+    CARD_CHANGE_REASONS = ('photo_change', 'name_change')
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('approved', 'Approved'),
@@ -147,6 +154,14 @@ class ReviewRequest(models.Model):
 
     def __str__(self):
         return f"{self.user.student_number} - {self.get_reason_display()} ({self.status})"
+
+    @classmethod
+    def record_card_change(cls, user, reason, approved, staff_member, note=''):
+        """Record a staff decision on a photo or name change."""
+        return cls.objects.create(
+            user=user, reason=reason, status='approved' if approved else 'declined',
+            resolved_at=timezone.now(), resolved_by=staff_member, staff_note=note,
+        )
 
     @classmethod
     def open_for(cls, user, reason, message=''):
