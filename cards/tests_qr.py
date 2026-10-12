@@ -13,8 +13,12 @@ from cards.models import StudentCard
 
 
 def decode_qr(png_bytes):
+    # The Aruco-based reader, not cv2.QRCodeDetector: the live code changes
+    # every second, and the basic reader failed on about one image in ten -
+    # the cause of the tests that failed now and then. This one read 300 of
+    # 300 live codes.
     image = cv2.imdecode(np.frombuffer(png_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
-    text, _, _ = cv2.QRCodeDetector().detectAndDecode(image)
+    text, _, _ = cv2.QRCodeDetectorAruco().detectAndDecode(image)
     return text
 
 

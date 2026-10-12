@@ -249,3 +249,59 @@ class ReuploadAfterRevokeTests(TestCase):
         self.assertContains(response, 'revoked by an administrator')
         card.refresh_from_db()
         self.assertEqual(card.status, 'revoked')
+
+
+class RestoredStudentLinksInAStaffBrowserTests(TestCase):
+    """Staff restore a student, then the student's emails are opened in the
+    same browser: the student must not end up in the staff pages."""
+
+    def setUp(self):
+        from django.core import mail
+
+        cache.clear()
+        self.staff = make_staff()
+        entry = DeletedStudentLog.objects.create(
+            student_number='220404999', full_name='Former Student', email='220404999@tut4life.ac.za',
+            was_verified=True, had_card=True, deleted_by=self.staff,
+        )
+        self.client.force_login(self.staff)
+        self.client.post(reverse('reissue_deleted_student', args=[entry.pk]))
+        self.student = User.objects.get(student_number='220404999')
+        self.emails = [message.body for message in mail.outbox]
+
+    def _link(self, pattern):
+        import re
+
+        for body in self.emails:
+            match = re.search(pattern, body)
+            if match:
+                return match.group(1)
+        self.fail(f'No email with a link matching {pattern}')
+
+    def test_the_restored_account_is_not_staff(self):
+        self.assertFalse(self.student.is_staff)
+        self.assertFalse(self.student.is_superuser)
+
+    def test_confirming_the_email_signs_the_staff_member_out(self):
+        response = self.client.post(self._link(r'(/accounts/confirm-email/\S+/)'))
+        self.assertRedirects(response, reverse('login'), fetch_redirect_response=False)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        self.student.refresh_from_db()
+        self.assertTrue(self.student.email_confirmed)
+
+    def test_setting_a_new_password_signs_the_staff_member_out(self):
+        link = self._link(r'(/accounts/password-reset-confirm/\S+/)')
+        form_page = self.client.get(link, follow=True)  # Django swaps the token for a session marker
+        response = self.client.post(form_page.request['PATH_INFO'], {
+            'new_password1': 'AnotherStrong123!', 'new_password2': 'AnotherStrong123!',
+        })
+        self.assertRedirects(response, reverse('password_reset_complete'), fetch_redirect_response=False)
+        self.assertNotIn('_auth_user_id', self.client.session)
+        response = self.client.get(reverse('login'))
+        self.assertEqual(response.status_code, 200)  # the login form, not the staff dashboard
+
+    def test_the_student_signed_in_on_their_own_device_stays_signed_in(self):
+        self.client.logout()
+        self.client.force_login(self.student)
+        self.client.post(self._link(r'(/accounts/confirm-email/\S+/)'))
+        self.assertEqual(self.client.session['_auth_user_id'], str(self.student.pk))

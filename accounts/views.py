@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.contrib.auth import views as auth_views
 from django.contrib.auth.decorators import login_required
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib import messages
@@ -517,6 +518,24 @@ def password_reset_view(request):
     return rate_limited_password_reset_view(request)
 
 
+class SignOutOthersPasswordResetConfirmView(auth_views.PasswordResetConfirmView):
+    """Django's set-new-password page, except that a browser signed in as a
+    different person is signed out once the new password is saved - so the
+    "Log in" button that follows lets the student sign in as themselves
+    instead of sending them into the other person's pages."""
+
+    def form_valid(self, form):
+        signed_in_as_someone_else = (
+            self.request.user.is_authenticated and self.request.user.pk != form.user.pk
+        )
+        # Django finishes with its reset token in the session first; signing
+        # out before that would wipe it.
+        response = super().form_valid(form)
+        if signed_in_as_someone_else:
+            logout(self.request)
+        return response
+
+
 def confirm_email(request, uidb64, token):
     """Landing page for the link sent by send_confirmation_email.
 
@@ -544,6 +563,12 @@ def confirm_email(request, uidb64, token):
     already_confirmed = not token_valid and user is not None and user.email_confirmed
 
     if request.method == 'POST':
+        # The link is for one student; if this browser is signed in as
+        # someone else (staff who just restored the account, or a shared
+        # computer), sign them out - otherwise the student lands in that
+        # person's pages and that person sees the student's messages.
+        if token_valid and request.user.is_authenticated and request.user.pk != user.pk:
+            logout(request)
         if token_valid:
             user.email_confirmed = True
             user.email_confirmed_at = timezone.now()
