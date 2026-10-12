@@ -311,8 +311,12 @@ class ReviewRequestAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         # The decided requests are the record that a person made the
-        # decision (POPIA s71).
-        return False
+        # decision (POPIA s71), so they can't be deleted on their own. But
+        # deleting a student takes their requests with them - refusing that
+        # made every student with a decision on record undeletable.
+        url_name = getattr(getattr(request, 'resolver_match', None), 'url_name', '')
+        return url_name in ('accounts_user_delete', 'accounts_user_changelist') and request.user.has_perm(
+            'accounts.delete_user')
 admin.site.unregister(Group)
 
 # The "View site" link in the admin header (admin/base.html's {{ site_url }})

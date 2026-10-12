@@ -388,3 +388,30 @@ class ReviewRequestAdminIsViewOnlyTests(TestCase):
         self.assertFalse(model_admin.has_add_permission(request))
         self.assertFalse(model_admin.has_change_permission(request))
         self.assertFalse(model_admin.has_delete_permission(request))
+
+    def test_a_student_with_decisions_on_record_can_still_be_deleted(self):
+        """Deleting a student takes their review requests with them - the
+        view-only rule used to make such a student undeletable."""
+        staff = User.objects.create_superuser(username='admin@tut4life.ac.za', email='admin@tut4life.ac.za',
+                                              student_number='STAFF-0001', password='StrongPass123!')
+        student = User.objects.create_user(username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+                                           student_number='220404773', password='StrongPass123!')
+        ReviewRequest.record_card_change(student, 'photo_change', False, staff, note='Not the same person')
+        self.client.force_login(staff)
+        page = self.client.get(reverse('admin:accounts_user_delete', args=[student.pk]))
+        self.assertNotContains(page, 'Cannot delete')
+        self.client.post(reverse('admin:accounts_user_delete', args=[student.pk]), {'post': 'yes'})
+        self.assertFalse(User.objects.filter(pk=student.pk).exists())
+        self.assertFalse(ReviewRequest.objects.exists())
+
+    def test_a_review_request_still_cannot_be_deleted_on_its_own(self):
+        staff = User.objects.create_superuser(username='admin@tut4life.ac.za', email='admin@tut4life.ac.za',
+                                              student_number='STAFF-0001', password='StrongPass123!')
+        student = User.objects.create_user(username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+                                           student_number='220404773', password='StrongPass123!')
+        review = ReviewRequest.record_card_change(student, 'photo_change', False, staff)
+        self.client.force_login(staff)
+        response = self.client.post(reverse('admin:accounts_reviewrequest_delete', args=[review.pk]), {'post': 'yes'})
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(ReviewRequest.objects.filter(pk=review.pk).exists())
+

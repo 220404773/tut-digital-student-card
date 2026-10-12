@@ -19,6 +19,7 @@ from django.db import models, transaction
 from .models import ReviewRequest, User
 from .forms import CustomUserCreationForm, CustomUserChangeForm, LoginForm, StyledPasswordChangeForm
 from .login_guard import clear_failed_logins, login_wait_seconds, record_failed_login
+from .notices import notify_student
 from .photo_changes import can_approve_automatically, compare_with_card_photo
 from tut_student_card.client_ip import get_client_ip
 from .services import (
@@ -1112,11 +1113,11 @@ def profile(request):
                         updated, 'photo_change', True, None,
                         detail=f"Automatic (similarity {auto_approved['score']:.2f})", similarity=auto_approved['score'],
                     )
-                    messages.success(
-                        request,
-                        f"Your new photo matched your card photo (similarity {auto_approved['score']:.2f}) "
-                        "and is now on your card."
-                    )
+                    text = (f"Your new photo matched your card photo (similarity {auto_approved['score']:.2f}) "
+                            "and is now on your card.")
+                    messages.success(request, text)
+                    # Listed with their other messages too, so the panel shows the latest outcome.
+                    notify_student(updated, text, level='success', email=False, already_shown=True)
 
                 if withdrawn:
                     messages.info(request, 'Your name change request was withdrawn - your card keeps your current name.')

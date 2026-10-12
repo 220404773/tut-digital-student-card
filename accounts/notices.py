@@ -41,12 +41,17 @@ _MESSAGE_LEVELS = {
 }
 
 
-def notify_student(student, text, level='info', request=None, email=True):
+def notify_student(student, text, level='info', request=None, email=True, already_shown=False):
     """Record a notice for the student and, once the current change has
-    been saved, email it. Staff accounts are never notified."""
+    been saved, email it. already_shown: the student is looking at the
+    outcome right now (it popped up on the page they're on), so it is only
+    listed with their messages, not popped up again or emailed.
+    Staff accounts are never notified."""
     if student.is_staff:
         return None
-    notice = StudentNotice.objects.create(user=student, level=level, text=text)
+    notice = StudentNotice.objects.create(
+        user=student, level=level, text=text, shown_at=timezone.now() if already_shown else None,
+    )
     if email:
         transaction.on_commit(lambda: email_student(student, text, request))
     return notice

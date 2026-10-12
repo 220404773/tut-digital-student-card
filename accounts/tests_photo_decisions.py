@@ -178,6 +178,21 @@ class AutomaticApprovalTests(PhotoDecisionTestCase):
         self.assertEqual((record.status, record.resolved_by), ('approved', None))
         self.assertEqual(record.message, 'Automatic (similarity 0.82)')
 
+    def test_an_automatic_approval_is_listed_with_the_students_messages(self):
+        """It used to pop up once and leave the panel showing older news."""
+        from accounts.models import StudentNotice
+
+        self._give_card_with_photo()
+        mail.outbox.clear()
+        self._upload(score=0.82)
+        notice = StudentNotice.objects.get(user=self.student)
+        self.assertIn('is now on your card', notice.text)
+        self.assertIsNotNone(notice.shown_at)  # seen on the page already: no second pop-up
+        self.assertEqual(mail.outbox, [])
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, 'is now on your card')
+        self.assertNotContains(response, 'app-toast-success')
+
     def test_exactly_the_threshold_is_approved(self):
         original = self._give_card_with_photo()
         self._upload(score=0.75)
