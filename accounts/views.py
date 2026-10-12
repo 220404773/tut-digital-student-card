@@ -55,6 +55,31 @@ def post_login_redirect(user):
     return redirect('performance_dashboard') if user.is_staff else redirect('dashboard')
 
 
+def _registration_period_problem(ocr_result):
+    """Why a confidently read document can't be accepted because of its
+    registration period, in words for the student - or None.
+
+    Expired: the period is over, so a card would be issued already expired.
+    Implausible: an end date more than a year out is almost certainly a
+    misread year (2027 for 2026), not a real registration. Only judged when
+    the document was read confidently; a doubtful reading goes to a person.
+    """
+    if not ocr_result or ocr_result.get('confidence_score', 0) < 0.8:
+        return None
+    end_date = parse_registration_end_date(ocr_result.get('period'))
+    if registration_period_has_expired(end_date):
+        return (
+            f"This proof of registration expired on {end_date:%d %b %Y}. "
+            f"Please upload your current ({timezone.now().year}) proof of registration."
+        )
+    if registration_period_is_implausible(end_date):
+        return (
+            f"The registration end date on this document ({end_date:%d %b %Y}) "
+            f"doesn't look right - please upload a clearer copy of your current proof of registration."
+        )
+    return None
+
+
 @require_http_methods(['POST'])
 # Per-IP ceilings are set for a campus, where many students share one public
 # IP address: generous enough for a class registering together, still low
@@ -91,6 +116,13 @@ def preview_registration_proof(request):
 
         if not ocr_result:
             return JsonResponse({'success': False, 'message': 'No extractable information was found in the uploaded document.'}, status=400)
+
+        # An old proof of registration is turned away now, as soon as it is
+        # read, instead of after the student has filled in the whole form -
+        # the same check, with the same message, that signup() makes.
+        problem = _registration_period_problem(ocr_result)
+        if problem:
+            return JsonResponse({'success': False, 'message': problem}, status=400)
 
         # Cache the result against this exact file's content so signup(), if
         # submitted with the same unmodified file, can reuse it instead of
@@ -275,23 +307,9 @@ def signup(request):
                         # True - this is what stops a card from being
                         # issued already-expired (see StudentCard.refresh_status()).
                         registration_end_date = parse_registration_end_date(ocr_result.get('period'))
-                        if registration_period_has_expired(registration_end_date):
-                            messages.warning(
-                                request,
-                                f"This proof of registration expired on {registration_end_date:%d %b %Y}. "
-                                f"Please upload your current ({timezone.now().year}) proof of registration."
-                            )
-                            return render(request, 'accounts/signup.html', {'form': form})
-                        if registration_period_is_implausible(registration_end_date):
-                            # Almost certainly a misread year (e.g. 2027
-                            # instead of 2026), not a real multi-year
-                            # registration - reject the same way rather than
-                            # trust a date this far out.
-                            messages.warning(
-                                request,
-                                f"The registration end date on this document ({registration_end_date:%d %b %Y}) "
-                                f"doesn't look right - please upload a clearer copy of your current proof of registration."
-                            )
+                        problem = _registration_period_problem(ocr_result)
+                        if problem:
+                            messages.warning(request, problem)
                             return render(request, 'accounts/signup.html', {'form': form})
 
                         # The form pre-fills the student number from the

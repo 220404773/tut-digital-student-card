@@ -21,11 +21,27 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    // Results appear as pop-up messages (static/js/toasts.js), so the form
+    // doesn't jump around while the student is filling it in.
+    function toast(level, text, options) {
+        if (window.showToast) {
+            return window.showToast(level, text, options);
+        }
+        return null;
+    }
+
+    let readingToast = null;
+    function finishReading() {
+        if (readingToast && readingToast.dismiss) {
+            readingToast.dismiss();
+        }
+        readingToast = null;
+    }
+
     fileInput.addEventListener('change', function(event) {
         const MAX_SIZE = 5 * 1024 * 1024;
         const ALLOWED = ['application/pdf', 'image/jpeg', 'image/png'];
         const previewUrl = fileInput.dataset.previewUrl;
-        const statusBox = document.getElementById('ocr-preview-status');
         const file = event.target.files && event.target.files[0];
 
         if (!file) {
@@ -33,13 +49,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (file.size > MAX_SIZE) {
-            alert('File too large (max 5MB)');
+            toast('warning', 'This file is too large - the limit is 5 MB.');
             event.target.value = '';
             return;
         }
 
         if (!ALLOWED.includes(file.type)) {
-            alert('File type not allowed (PDF, JPG, PNG only)');
+            toast('warning', 'This file type is not allowed. Upload a PDF, JPG or PNG.');
             event.target.value = '';
             return;
         }
@@ -60,11 +76,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData();
         formData.append('registration_proof', file);
 
-        if (statusBox) {
-            statusBox.className = 'alert alert-info';
-            statusBox.textContent = 'Processing uploaded file and extracting your details...';
-            statusBox.classList.remove('d-none');
-        }
+        finishReading();
+        readingToast = toast('info', 'Reading your document and filling in your details...', { timeout: 0 });
 
         fetch(previewUrl, {
             method: 'POST',
@@ -77,9 +90,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return response.json();
         })
         .then(function(data) {
-            if (!statusBox) {
-                return;
-            }
+            finishReading();
 
             if (data.success) {
                 const email = document.getElementById('id_email');
@@ -112,27 +123,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 const documentType = data.document_type || 'TUT Proof of Registration';
 
                 if (fieldsPopulated) {
-                    statusBox.className = 'alert alert-success';
-                    statusBox.textContent = `${documentType} processed successfully. The required fields have been populated automatically.`;
+                    toast('success', `${documentType} read successfully - your details have been filled in. Please check them.`);
                 } else {
-                    statusBox.className = 'alert alert-warning';
-                    statusBox.textContent = `${documentType} received, but no details could be extracted. Please enter your details manually.`;
+                    toast('warning', `${documentType} received, but no details could be read. Please enter your details yourself.`);
                 }
                 return;
             }
 
-            // Invalid document (e.g. failed classification) - clear the
-            // file input so it's obvious that file was rejected, not still
-            // queued for submission.
+            // Rejected (an old or wrong document): clear the file so it's
+            // obvious it won't be submitted, and say why.
             fileInput.value = '';
-            statusBox.className = 'alert alert-warning';
-            statusBox.textContent = data.message || 'We could not extract details from this document. Please type them manually.';
+            toast('danger', data.message || 'We could not read this document. Please try another copy.');
         })
         .catch(function() {
-            if (statusBox) {
-                statusBox.className = 'alert alert-warning';
-                statusBox.textContent = 'Document preview failed. Please enter the details manually.';
-            }
+            finishReading();
+            toast('warning', 'Your document could not be checked right now. Please enter your details yourself.');
         });
     });
 });

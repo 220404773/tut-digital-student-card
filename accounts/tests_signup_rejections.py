@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from accounts.models import User
-from accounts.tests_identity import ocr_result, signup_payload
+from accounts.tests_identity import ocr_result, proof, signup_payload
 
 
 @override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
@@ -60,3 +60,63 @@ class RejectedDocumentCreatesNoAccountTests(TestCase):
             response = self.client.post(reverse('signup'), signup_payload())
         self.assertRedirects(response, reverse('dashboard'), fetch_redirect_response=False)
         self.assertFalse(User.objects.get(student_number='220404773').is_verified)
+
+
+class PreviewRejectsOldDocumentsTests(TestCase):
+    """Choosing the file runs the preview; an old proof is turned away there,
+    before the student fills in the rest of the form."""
+
+    def setUp(self):
+        cache.clear()
+
+    def _preview(self, result):
+        with patch('accounts.views.process_registration_proof', return_value=result):
+            return self.client.post(reverse('preview_registration_proof'), {'registration_proof': proof()})
+
+    def test_an_expired_document_is_rejected_at_once(self):
+        result = ocr_result('220404773')
+        result['period'] = '01-Jan-2022 to 31-Dec-2022'
+        response = self._preview(result)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['success'])
+        self.assertIn('expired on 31 Dec 2022', response.json()['message'])
+
+    def test_an_expired_document_is_not_kept_for_the_signup_step(self):
+        from accounts.views import OCR_PREVIEW_SESSION_KEY
+
+        result = ocr_result('220404773')
+        result['period'] = '01-Jan-2022 to 31-Dec-2022'
+        self._preview(result)
+        self.assertNotIn(OCR_PREVIEW_SESSION_KEY, self.client.session)
+
+    def test_an_implausible_date_is_rejected_at_once(self):
+        result = ocr_result('220404773')
+        far = timezone.now().date() + timedelta(days=365 * 5)
+        result['period'] = f'01-Jan-2026 to {far:%d-%b-%Y}'
+        self.assertIn("doesn't look right", self._preview(result).json()['message'])
+
+    def test_a_current_document_fills_in_the_form(self):
+        data = self._preview(ocr_result('220404773')).json()
+        self.assertTrue(data['success'])
+        self.assertEqual(data['student_number'], '220404773')
+
+    def test_a_doubtful_reading_is_not_rejected_on_its_date(self):
+        """A low-confidence read may have the date wrong: the student carries
+        on and, at signup, it goes to a person instead."""
+        result = ocr_result('220404773', confidence=0.6)
+        result['period'] = '01-Jan-2022 to 31-Dec-2022'
+        self.assertTrue(self._preview(result).json()['success'])
+
+
+class MessagesAppearAsPopUpsTests(TestCase):
+    def test_a_message_is_shown_as_a_toast_over_the_page(self):
+        cache.clear()
+        result = ocr_result('220404773')
+        result['period'] = '01-Jan-2020 to 31-Dec-2020'
+        with patch('accounts.views.process_registration_proof', return_value=result):
+            response = self.client.post(reverse('signup'), signup_payload())
+        content = response.content.decode()
+        self.assertRegex(content, r'<div id="toast-stack" class="toast-stack">\s*<div class="app-toast app-toast-warning"')
+        self.assertIn('role="alert"', content)
+        self.assertIn('js/toasts', content)
+        self.assertNotIn('alert-dismissible', content)

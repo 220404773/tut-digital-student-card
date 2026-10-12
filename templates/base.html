@@ -143,19 +143,26 @@
         </div>
     </nav>
     
-    <!-- Messages -->
-    {% if messages %}
-    <div class="container mt-3">
+    {% comment %}
+        Messages pop up in a corner over the page (static/js/toasts.js), so the
+        page below doesn't move. Page scripts add more with window.showToast().
+    {% endcomment %}
+    <div id="toast-stack" class="toast-stack">
         {% for message in messages %}
-            <div class="alert alert-{{ message.tags }} alert-dismissible fade show auto-dismiss-alert"
-                 data-autodismiss-ms="{% if message.tags == 'success' %}5000{% else %}10000{% endif %}"
-                 role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Dismiss this message"></button>
+            {% with level=message.level_tag %}
+            <div class="app-toast app-toast-{{ level }}" data-level="{{ level }}"
+                 role="{% if level == 'warning' or level == 'danger' %}alert{% else %}status{% endif %}">
+                <i class="fas {% if level == 'success' %}fa-circle-check{% elif level == 'warning' %}fa-triangle-exclamation{% elif level == 'danger' %}fa-circle-xmark{% else %}fa-circle-info{% endif %} app-toast-icon" aria-hidden="true"></i>
+                <div class="app-toast-body">
+                    <strong class="app-toast-title">{% if level == 'success' %}Done{% elif level == 'warning' %}Please check{% elif level == 'danger' %}Something went wrong{% else %}Notice{% endif %}</strong>
+                    <div>{{ message }}</div>
+                </div>
+                <button type="button" class="app-toast-close" aria-label="Dismiss this message">&times;</button>
+                <div class="app-toast-timer"></div>
             </div>
+            {% endwith %}
         {% endfor %}
     </div>
-    {% endif %}
     
     <!-- Content -->
     <main id="main-content" tabindex="-1">
@@ -231,14 +238,8 @@
     
     <script src="{% static 'vendor/bootstrap-5.3.0/bootstrap.bundle.min.js' %}"></script>
     <script src="{% static 'js/confirm-submit.js' %}"></script>
+    <script src="{% static 'js/toasts.js' %}"></script>
     <script nonce="{{ request.csp_nonce }}">
-        document.querySelectorAll('.auto-dismiss-alert').forEach(function (alertEl) {
-            var delay = parseInt(alertEl.dataset.autodismissMs, 10) || 10000;
-            setTimeout(function () {
-                bootstrap.Alert.getOrCreateInstance(alertEl).close();
-            }, delay);
-        });
-
         // Live password-confirmation feedback - checks as you type instead
         // of waiting for form submit. Covers every "password + confirm
         // password" pair in the app (signup, password reset, change password).
