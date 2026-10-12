@@ -5,11 +5,11 @@
 // window.showToast(level, text, {timeout: ms}) - a timeout of 0 keeps the
 // toast up until closed, or until the page calls toast.dismiss().
 //
-// Success and information close by themselves; a warning stays longer and an
-// error stays until it is closed, because those usually say what to do next.
+// Every toast closes by itself; warnings and errors stay longer, because
+// those usually say what to do next.
 // Hovering over or focusing a toast pauses its timer.
 (function () {
-    var TIMEOUTS = { success: 5000, info: 8000, warning: 12000, danger: 0 };
+    var TIMEOUTS = { success: 5000, info: 8000, warning: 12000, danger: 12000 };
     var TITLES = { success: 'Done', info: 'Notice', warning: 'Please check', danger: 'Something went wrong' };
     var ICONS = {
         success: 'fa-circle-check',

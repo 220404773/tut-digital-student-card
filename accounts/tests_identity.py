@@ -75,6 +75,9 @@ class SignupStudentNumberCheckTests(TestCase):
 
         self.assertTrue(User.objects.get(student_number='220404773').is_verified)
 
+    # Once the student has used up their chances to correct the details
+    # (tests_signup_rejections.DetailsMustMatchTheDocumentTests).
+    @patch('accounts.views.DETAIL_CORRECTION_ATTEMPTS', 0)
     def test_someone_elses_document_is_not_verified(self):
         """The gap being closed: a classmate's genuine document, your own number."""
         with patch('accounts.views.process_registration_proof', return_value=ocr_result('220404999')):
@@ -85,6 +88,9 @@ class SignupStudentNumberCheckTests(TestCase):
         self.assertFalse(StudentCard.objects.filter(user=user).exists())
         self.assertContains(response, 'does not match the one you entered')
 
+    # Once the student has used up their chances to correct the details
+    # (tests_signup_rejections.DetailsMustMatchTheDocumentTests).
+    @patch('accounts.views.DETAIL_CORRECTION_ATTEMPTS', 0)
     def test_a_mismatched_document_is_not_consumed(self):
         """Not verified means not bound - the real owner can still use their document."""
         with patch('accounts.views.process_registration_proof', return_value=ocr_result('220404999')):
@@ -99,6 +105,9 @@ class SignupStudentNumberCheckTests(TestCase):
         self.assertFalse(User.objects.get(student_number='220404773').is_verified)
         self.assertContains(response, 'could not read a student number')
 
+    # Once the student has used up their chances to correct the details
+    # (tests_signup_rejections.DetailsMustMatchTheDocumentTests).
+    @patch('accounts.views.DETAIL_CORRECTION_ATTEMPTS', 0)
     def test_a_mismatch_is_flagged_for_manual_review_in_the_metrics(self):
         with patch('accounts.views.process_registration_proof', return_value=ocr_result('220404999')):
             self.client.post(reverse('signup'), signup_payload('220404773'))

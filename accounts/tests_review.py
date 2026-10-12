@@ -49,6 +49,9 @@ class AutomaticReviewTests(TestCase):
         with patch('accounts.views.process_registration_proof', return_value=result):
             return self.client.post(reverse('signup'), signup_payload(**overrides), follow=True)
 
+    # Once the student has used up their chances to correct the details
+    # (tests_signup_rejections.DetailsMustMatchTheDocumentTests).
+    @patch('accounts.views.DETAIL_CORRECTION_ATTEMPTS', 0)
     def test_student_number_mismatch_opens_a_review(self):
         self._signup(ocr_result(student_number='220404999'))
         review = ReviewRequest.objects.get(user__student_number='220404773')

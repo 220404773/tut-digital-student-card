@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from accounts.models import User
+from accounts.models import ReviewRequest, User
 from accounts.tests_identity import ocr_result, proof, signup_payload
 
 
@@ -120,3 +120,100 @@ class MessagesAppearAsPopUpsTests(TestCase):
         self.assertIn('role="alert"', content)
         self.assertIn('js/toasts', content)
         self.assertNotIn('alert-dismissible', content)
+
+
+@override_settings(REQUIRE_EMAIL_CONFIRMATION_FOR_CARD=True)
+class DetailsMustMatchTheDocumentTests(TestCase):
+    """A genuine proof of registration with someone else's details typed in:
+    the student is asked twice to correct them, with no account created;
+    after that a staff member decides."""
+
+    def setUp(self):
+        cache.clear()
+
+    def _signup(self, result, **fields):
+        with patch('accounts.views.process_registration_proof', return_value=result) as read:
+            response = self.client.post(reverse('signup'), signup_payload(**fields))
+        self.read = read
+        return response
+
+    def test_a_different_student_number_is_sent_back_for_correction(self):
+        response = self._signup(ocr_result('220404999'), student_number='220404773')
+        self.assertContains(response, "match the student number on your proof of registration (220404999)")
+        self.assertContains(response, 'attempt 1 of 2')
+        self.assertFalse(User.objects.exists())
+
+    def test_a_different_name_is_sent_back_for_correction(self):
+        response = self._signup(ocr_result('220404773'), first_name='Someone', last_name='Else')
+        self.assertContains(response, "match the name on your proof of registration (Kekeletso Khaka)")
+        self.assertFalse(User.objects.exists())
+
+    def test_the_second_try_says_a_person_will_check_next(self):
+        self._signup(ocr_result('220404773'), first_name='Someone')
+        response = self._signup(ocr_result('220404773'), first_name='Someone')
+        self.assertContains(response, 'attempt 2 of 2')
+        self.assertContains(response, 'a staff member will check it')
+        self.assertFalse(User.objects.exists())
+
+    def test_the_third_try_goes_to_a_staff_member_without_a_card(self):
+        for _ in range(3):
+            self._signup(ocr_result('220404773'), first_name='Someone')
+        user = User.objects.get(student_number='220404773')
+        self.assertFalse(user.is_verified)
+        self.assertEqual(ReviewRequest.objects.get(user=user).reason, 'name_mismatch')
+
+    def test_a_different_number_on_the_third_try_is_a_number_review(self):
+        for _ in range(3):
+            self._signup(ocr_result('220404999'), student_number='220404773')
+        user = User.objects.get(student_number='220404773')
+        self.assertEqual(ReviewRequest.objects.get(user=user).reason, 'number_mismatch')
+
+    def test_correcting_the_details_verifies_the_student(self):
+        self._signup(ocr_result('220404773'), first_name='Someone')
+        self._signup(ocr_result('220404773'))
+        self.assertTrue(User.objects.get(student_number='220404773').is_verified)
+
+    def test_a_different_email_on_the_document_is_sent_back(self):
+        result = ocr_result('220404773')
+        result['email'] = '220404999@tut4life.ac.za'
+        response = self._signup(result)
+        self.assertContains(response, 'match the email on your proof of registration')
+
+    def test_a_retry_does_not_read_the_document_again(self):
+        """The same file is uploaded again - its reading is reused."""
+        from accounts.views import OCR_PREVIEW_SESSION_KEY
+
+        self._signup(ocr_result('220404773'), first_name='Someone')
+        self.assertIn(OCR_PREVIEW_SESSION_KEY, self.client.session)
+        self._signup(ocr_result('220404773'))
+        self.read.assert_not_called()
+        self.assertTrue(User.objects.get(student_number='220404773').is_verified)
+
+    def test_honest_differences_in_how_a_name_is_written_are_accepted(self):
+        result = ocr_result('220404773')
+        result['full_name'] = 'MR KEKELETSO THABO KHAKA'
+        self._signup(result, first_name='kekeletso', last_name='Khaka')
+        self.assertTrue(User.objects.get(student_number='220404773').is_verified)
+
+
+class NameComparisonTests(TestCase):
+    def test_forgiving_about_case_accents_order_titles_middle_names_and_initials(self):
+        from accounts.services import name_matches_document
+
+        for typed, document in (
+            ('Kekeletso', 'KHAKA KEKELETSO'),
+            ('Khaka', 'Mr Kekeletso Khaka'),
+            ('Kekeletso', 'Kekeletso Thabo Khaka'),
+            ('Kekeletso', 'K Khaka'),
+            ('Zoë', 'ZOE Mokoena'),
+            ('Anything', ''),  # nothing read from the document: not compared
+        ):
+            with self.subTest(typed=typed, document=document):
+                self.assertTrue(name_matches_document(typed, document))
+
+    def test_a_different_name_does_not_match(self):
+        from accounts.services import name_matches_document
+
+        for typed, document in (('Someone', 'Kekeletso Khaka'), ('Khaka-Mokoena', 'Kekeletso Khaka'), ('', 'Kekeletso Khaka')):
+            with self.subTest(typed=typed):
+                self.assertFalse(name_matches_document(typed, document))
