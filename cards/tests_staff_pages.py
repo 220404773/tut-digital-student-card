@@ -123,3 +123,18 @@ class StaffPagesRenderWithDataTests(TestCase):
         self.assertRegex(response.content.decode(), r'Pending Reviews</h6>\s*<h3>1</h3>')
         self.assertContains(response, '1 photo change')
         self.assertNotContains(response, 'registration review')
+
+    def test_staff_without_a_name_are_shown_by_email(self):
+        """The admin account has no name - "Deleted By" used to be blank."""
+        response = self.client.get(reverse('report_deleted_students'))
+        self.assertContains(response, '<td>admin@tut4life.ac.za</td>', html=True)
+
+    def test_card_activity_shows_who_revoked(self):
+        CardActivity.objects.create(student_card=self.card, activity_type='revoked', performed_by=self.staff)
+        self.assertContains(self.client.get(reverse('report_card_activity')), 'admin@tut4life.ac.za')
+
+    def test_restoring_a_deleted_student_records_who_did_it(self):
+        self.client.post(reverse('reissue_deleted_student', args=[self.deleted.pk]))
+        self.deleted.refresh_from_db()
+        self.assertEqual(self.deleted.restored_by, self.staff)
+        self.assertContains(self.client.get(reverse('report_deleted_students')), 'by admin@tut4life.ac.za')

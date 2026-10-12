@@ -392,6 +392,134 @@
             {% endif %}
         </div>
 
+        <!-- Photo Change Metrics Section -->
+        {% comment %}
+            How photo changes on issued cards were decided, and how the face comparison's
+            similarity scores line up with what staff decided - the evidence for setting the
+            automatic-approval threshold (FACE_AUTO_APPROVE_MIN_SIMILARITY).
+        {% endcomment %}
+        <div class="row mb-5">
+            <div class="col-md-12">
+                <h2 class="mb-2"><i class="fas fa-camera-rotate" aria-hidden="true"></i> Photo Change Performance</h2>
+                <p class="text-muted mb-4">
+                    Face comparison: <strong>{{ photo_stats.comparison_on|yesno:"on,off" }}</strong> &middot;
+                    automatic approval: <strong>{{ photo_stats.automatic_on|yesno:"on,off" }}</strong>,
+                    at a similarity of <strong>{{ photo_stats.threshold }}</strong> or more
+                </p>
+            </div>
+
+            {% if photo_stats.total or photo_stats.waiting %}
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_review_requests' %}" class="tile-link">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Photo Changes Decided</h6>
+                                <h3>{{ photo_stats.total }}</h3>
+                                <small>{{ photo_stats.waiting }} waiting for staff</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_review_requests' %}" class="tile-link">
+                        <div class="card bg-success text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Approved Automatically</h6>
+                                <h3>{{ photo_stats.automatic }} <small class="fs-6">({{ photo_stats.automatic_rate|floatformat:0 }}%)</small></h3>
+                                <small>{{ photo_stats.undone }} undone by staff</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_review_requests' %}" class="tile-link">
+                        <div class="card bg-dark text-white">
+                            <div class="card-body">
+                                <h6 class="card-title">Decided by Staff</h6>
+                                <h3>{{ photo_stats.staff_approved|add:photo_stats.staff_rejected }}</h3>
+                                <small>{{ photo_stats.staff_approved }} approved &middot; {{ photo_stats.staff_rejected }} rejected</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-3 mb-3">
+                    <a href="{% url 'report_review_requests' %}" class="tile-link">
+                        <div class="card bg-info text-dark">
+                            <div class="card-body">
+                                <h6 class="card-title">Compared (with consent)</h6>
+                                <h3>{{ photo_stats.compared }} <small class="fs-6">({{ photo_stats.compared_rate|floatformat:0 }}%)</small></h3>
+                                <small>The rest were compared by eye</small>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h6 class="card-title">Average similarity</h6>
+                            <p class="mb-1">Approved photos: <strong>{{ photo_stats.avg_similarity_approved|floatformat:2|default:"-" }}</strong></p>
+                            <p class="mb-0">Rejected photos: <strong>{{ photo_stats.avg_similarity_rejected|floatformat:2|default:"-" }}</strong></p>
+                            <small class="text-muted">The further apart these are, the better the comparison separates the same person from someone else.</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                    <div class="card h-100 {% if photo_stats.rejected_above_threshold %}border-danger{% endif %}">
+                        <div class="card-body">
+                            <h6 class="card-title">Is the threshold right?</h6>
+                            <p class="mb-1">Approved by staff, but below {{ photo_stats.threshold }}: <strong>{{ photo_stats.approved_below_threshold }}</strong>
+                                <small class="text-muted">- genuine matches automatic approval missed</small></p>
+                            <p class="mb-0 {% if photo_stats.rejected_above_threshold %}text-danger fw-bold{% endif %}">Rejected by staff, but {{ photo_stats.threshold }} or above: <strong>{{ photo_stats.rejected_above_threshold }}</strong>
+                                <small class="{% if photo_stats.rejected_above_threshold %}text-danger{% else %}text-muted{% endif %}">- would have been approved automatically; any at all means the threshold is too low</small></p>
+                        </div>
+                    </div>
+                </div>
+
+                {% if photo_stats.recent %}
+                <div class="col-md-12">
+                    <h3 class="h6 mt-2">Recent photo decisions</h3>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col">Student</th>
+                                    <th scope="col">Decision</th>
+                                    <th scope="col">Similarity</th>
+                                    <th scope="col">By</th>
+                                    <th scope="col">When</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for decision in photo_stats.recent %}
+                                    <tr>
+                                        <td>{{ decision.user.get_full_name_display }} ({{ decision.user.student_number }})</td>
+                                        <td>
+                                            {% if decision.message == 'Automatic approval undone' %}<span class="badge bg-danger">Undone</span>
+                                            {% elif decision.status == 'approved' %}<span class="badge bg-success">Approved</span>
+                                            {% else %}<span class="badge bg-danger">Rejected</span>{% endif %}
+                                        </td>
+                                        <td>{{ decision.similarity|floatformat:2|default:"Not compared" }}</td>
+                                        <td>{% if decision.resolved_by %}{{ decision.resolved_by.get_full_name_display }}{% else %}Automatic{% endif %}</td>
+                                        <td>{{ decision.resolved_at|date:"Y-m-d H:i" }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+            {% else %}
+                <div class="col-md-12">
+                    <div class="alert alert-info">No photo changes yet</div>
+                </div>
+            {% endif %}
+        </div>
+
         <!-- Email Confirmation Metrics Section -->
         <div class="row mb-5">
             <div class="col-md-12">

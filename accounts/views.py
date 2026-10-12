@@ -1094,7 +1094,7 @@ def profile(request):
                 if auto_approved:
                     ReviewRequest.record_card_change(
                         updated, 'photo_change', True, None,
-                        detail=f"Automatic (similarity {auto_approved['score']:.2f})", notified=True,
+                        detail=f"Automatic (similarity {auto_approved['score']:.2f})", similarity=auto_approved['score'],
                     )
                     messages.success(
                         request,

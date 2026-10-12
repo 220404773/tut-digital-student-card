@@ -99,7 +99,12 @@ class StudentIsToldTheOutcomeTests(PhotoDecisionTestCase):
         response = self.client.get(reverse('dashboard'))
         self.assertContains(response, 'Your new photo was not approved')
         self.assertContains(response, 'Reason: Your face is covered by sunglasses.')
-        self.assertNotContains(self.client.get(reverse('dashboard')), 'Your new photo was not approved')
+        self.assertContains(response, 'app-toast-warning')
+        # Next visit: no pop-up, but still listed under the card office's messages.
+        again = self.client.get(reverse('dashboard'))
+        self.assertNotContains(again, 'app-toast-warning')
+        self.assertContains(again, 'Messages from the card office')
+        self.assertContains(again, 'Your new photo was not approved')
 
     def test_the_student_is_emailed_the_decision(self):
         self._give_card_with_photo()
@@ -270,3 +275,44 @@ class AutomaticApprovalTests(PhotoDecisionTestCase):
         self.student.refresh_from_db()
         self.assertFalse(self.student.previous_profile_picture)
         self.assertFalse(default_storage.exists(original))
+
+
+@override_settings(FACE_COMPARISON_ENABLED=True, FACE_AUTO_APPROVE_ENABLED=True, FACE_AUTO_APPROVE_MIN_SIMILARITY=0.75)
+class PhotoChangePerformanceTests(PhotoDecisionTestCase):
+    """The dashboard section that shows whether the threshold is right."""
+
+    def _stats(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse('performance_dashboard'))
+        self.assertContains(response, 'Photo Change Performance')
+        return response.context['photo_stats']
+
+    def test_the_score_is_kept_with_each_decision(self):
+        self._give_card_with_photo()
+        self._upload(score=0.62)
+        self._staff_decides('resolve_photo_change', 'approve')
+        self.assertEqual(ReviewRequest.objects.get(user=self.student, reason='photo_change').similarity, 0.62)
+
+    def test_automatic_and_staff_decisions_are_counted(self):
+        self._give_card_with_photo()
+        self._upload('blue', score=0.9)            # automatic
+        self._upload('green', score=0.62)          # waits (never twice in a row)
+        self._staff_decides('resolve_photo_change', 'approve')
+        stats = self._stats()
+        self.assertEqual((stats['total'], stats['automatic'], stats['staff_approved']), (2, 1, 1))
+        self.assertEqual(stats['approved_below_threshold'], 1)  # 0.62 was a genuine match
+        self.assertEqual(stats['rejected_above_threshold'], 0)
+
+    def test_a_rejection_above_the_threshold_is_flagged(self):
+        self._give_card_with_photo()
+        User.objects.filter(pk=self.student.pk).update(photo_auto_approved_at=timezone.now())
+        self.student.refresh_from_db()
+        self._upload(score=0.8)                    # waits: the previous change was automatic
+        self._staff_decides('resolve_photo_change', 'reject')
+        self.assertEqual(self._stats()['rejected_above_threshold'], 1)
+
+    def test_the_reason_box_shows_the_whole_text(self):
+        self._give_card_with_photo()
+        self._upload(consent=False)
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse('report_review_requests')), 'field-sizing: content')

@@ -12,6 +12,9 @@ Card activity is the audit trail of who revoked/reissued a card and when, so
 those rows are kept - only the IP address and browser string, which identify
 the visitor rather than the event, are removed.
 
+Messages from the card office to a student (StudentNotice) are deleted once
+older than the retention period too.
+
 A photo replaced by an automatic approval is kept for
 AUTO_APPROVED_PHOTO_UNDO_DAYS so staff can undo it, then deleted.
 
@@ -25,7 +28,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from accounts.models import ReviewRequest, User
+from accounts.models import ReviewRequest, StudentNotice, User
 from cards.models import CardActivity, PageVisit
 
 
@@ -61,6 +64,7 @@ class Command(BaseCommand):
         deleted, _ = old_visits.delete()
         anonymised = old_activity.update(ip_address=None, user_agent=None)
         cleared = old_review_messages.update(message='')
+        StudentNotice.objects.filter(created_at__lt=cutoff).delete()
         for student in expired_undo_photos:
             student.previous_profile_picture.delete(save=False)
             student.save(update_fields=['previous_profile_picture'])

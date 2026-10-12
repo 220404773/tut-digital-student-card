@@ -13,6 +13,7 @@ from django.utils import timezone
 from cards.models import StudentCard, CardActivity
 from cards.utils import generate_unique_card_number, issue_card_if_allowed
 from .models import User, DeletedStudentLog, ReviewRequest
+from .notices import CLOSED_NOTICE, REISSUED_NOTICE, REVOKED_NOTICE, email_student, notify_student
 from .services import delete_registration_proof
 
 logger = logging.getLogger(__name__)
@@ -41,14 +42,15 @@ class StudentUserAdmin(UserAdmin):
     # student wants to jump to from here.
     view_on_site = lambda self, obj: reverse('performance_dashboard')
 
-    def _revoke_single_card(self, student, performed_by):
+    def _revoke_single_card(self, student, request):
         """Returns True if the student had a card to revoke."""
         card = StudentCard.objects.filter(user=student).first()
         if not card:
             return False
         card.status = 'revoked'
         card.save()
-        CardActivity.objects.create(student_card=card, activity_type='revoked', performed_by=performed_by)
+        CardActivity.objects.create(student_card=card, activity_type='revoked', performed_by=request.user)
+        notify_student(student, REVOKED_NOTICE, level='danger', request=request)
         return True
 
     def _reissue_single_card(self, student, request):
@@ -58,10 +60,13 @@ class StudentUserAdmin(UserAdmin):
             # No card yet - issue one under the same rule as every other path
             # (verified, and email confirmed), rather than silently doing nothing.
             try:
-                return issue_card_if_allowed(student, request)
+                outcome = issue_card_if_allowed(student, request)
             except Exception:
                 logger.exception("Card generation failed for student %s", student.pk)
                 return 'failed'
+            if outcome == 'issued':
+                notify_student(student, 'Your digital student card has been issued.', level='success', request=request)
+            return outcome
 
         # A new card number is enough: the QR code is drawn from it each time
         # it's shown, so the old QR code stops working with no file to clean up.
@@ -74,11 +79,12 @@ class StudentUserAdmin(UserAdmin):
         card.expiry_date = student.registration_end_date or card.expiry_date
         card.save()
         CardActivity.objects.create(student_card=card, activity_type='reissued', performed_by=request.user)
+        notify_student(student, REISSUED_NOTICE, level='warning', request=request)
         return 'reissued'
 
     @admin.action(description='Revoke digital card')
     def revoke_card_action(self, request, queryset):
-        revoked = sum(1 for student in queryset if self._revoke_single_card(student, request.user))
+        revoked = sum(1 for student in queryset if self._revoke_single_card(student, request))
         skipped = queryset.count() - revoked
 
         message = f'Revoked {revoked} card(s).'
@@ -119,7 +125,7 @@ class StudentUserAdmin(UserAdmin):
         if request.method != 'POST':
             return HttpResponseNotAllowed(['POST'])
         student = get_object_or_404(User, pk=student_id)
-        if self._revoke_single_card(student, request.user):
+        if self._revoke_single_card(student, request):
             self.message_user(request, f"Revoked {student.get_full_name_display()}'s digital card.")
         else:
             self.message_user(request, f'{student.get_full_name_display()} has no card to revoke.', level=messages.WARNING)
@@ -145,6 +151,31 @@ class StudentUserAdmin(UserAdmin):
             self.message_user(request, f"Couldn't issue a card for {name}.", level=messages.ERROR)
         return redirect('admin:accounts_user_change', student.pk)
 
+    # Details a student sees on their card or uses to sign in: a staff member
+    # changing them tells the student.
+    NOTIFIED_FIELDS = ('first_name', 'last_name', 'email', 'student_number', 'phone', 'date_of_birth',
+                       'gender', 'profile_picture', 'registration_end_date')
+
+    def _notify_changes(self, obj, form, request):
+        if form is None:  # saved without a form: nothing to compare
+            return
+        changed = form.changed_data
+        details = [str(form.fields[name].label).lower() for name in self.NOTIFIED_FIELDS if name in changed]
+        if details:
+            notify_student(obj, 'The student card office updated your ' + ', '.join(details) + '.',
+                           level='info', request=request)
+        if 'is_verified' in changed and not obj.is_verified:
+            notify_student(obj, 'The student card office withdrew the verification of your registration. '
+                                'Contact them if you think this is a mistake.', level='warning', request=request)
+        if 'is_active' in changed:
+            if obj.is_active:
+                notify_student(obj, 'Your account has been re-activated by the student card office.',
+                               level='success', request=request)
+            else:
+                notify_student(obj, 'Your account has been deactivated by the student card office, so you cannot '
+                                    'sign in. Contact them if you think this is a mistake.',
+                               level='danger', request=request)
+
     def _log_deletion(self, obj, deleted_by):
         # Deleting a User cascades - their StudentCard, CardActivity,
         # and metrics rows all disappear with it. Capture a snapshot before
@@ -162,13 +193,20 @@ class StudentUserAdmin(UserAdmin):
             deleted_by=deleted_by,
         )
 
+    def _email_closed_account(self, obj, request):
+        # The account (and so any dashboard notice) is gone - email only.
+        if not obj.is_staff:
+            transaction.on_commit(lambda: email_student(obj, CLOSED_NOTICE, request))
+
     def delete_model(self, request, obj):
         self._log_deletion(obj, request.user)
+        self._email_closed_account(obj, request)
         super().delete_model(request, obj)
 
     def delete_queryset(self, request, queryset):
         for obj in queryset:
             self._log_deletion(obj, request.user)
+            self._email_closed_account(obj, request)
         super().delete_queryset(request, queryset)
 
     def save_model(self, request, obj, form, change):
@@ -192,6 +230,8 @@ class StudentUserAdmin(UserAdmin):
             obj.student_number = f'STAFF-ADMIN-{next_number}'
 
         super().save_model(request, obj, form, change)
+        if change and not obj.is_staff:
+            self._notify_changes(obj, form, request)
 
         # The "Registration" fieldset exposes registration_proof directly -
         # if a staff member uploads one here, there's no OCR step to trigger
@@ -231,6 +271,14 @@ class StudentUserAdmin(UserAdmin):
                 return
             if closed:
                 self.message_user(request, 'Their pending review request was closed.')
+            if form is not None and 'is_verified' in form.changed_data:
+                next_step = {
+                    'issued': ' Your digital student card is ready on your dashboard.',
+                    'awaiting_email': ' Confirm your email address to receive your digital student card.',
+                    'awaiting_photo': ' Add a profile photo on your Profile page to receive your digital student card.',
+                }.get(outcome, '')
+                notify_student(obj, 'Your registration has been verified by the student card office.' + next_step,
+                               level='success', request=request)
             if outcome == 'issued':
                 self.message_user(request, 'Digital student card generated for this student.')
             elif outcome == 'awaiting_email':

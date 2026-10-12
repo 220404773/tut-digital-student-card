@@ -3,6 +3,8 @@ from datetime import timedelta
 from django.contrib import admin
 from django.utils import timezone
 from .models import StudentCard
+from accounts.notices import REVOKED_NOTICE, notify_student
+
 from .utils import generate_unique_card_number
 
 
@@ -33,3 +35,16 @@ class StudentCardAdmin(admin.ModelAdmin):
             obj.expiry_date = obj.user.registration_end_date or (timezone.now().date() + timedelta(days=365))
 
         super().save_model(request, obj, form, change)
+        if not change:
+            return
+        if 'status' in form.changed_data:
+            text, level = {
+                'revoked': (REVOKED_NOTICE, 'danger'),
+                'active': ('Your digital student card is active again.', 'success'),
+                'expired': ('Your digital student card has been marked as expired. Upload your current proof of '
+                            'registration from your dashboard to reactivate it.', 'warning'),
+            }.get(obj.status, (f'The status of your digital student card changed to {obj.get_status_display()}.', 'info'))
+            notify_student(obj.user, text, level=level, request=request)
+        elif 'expiry_date' in form.changed_data and obj.expiry_date:
+            notify_student(obj.user, f'Your digital student card is now valid until {obj.expiry_date:%d %b %Y}.',
+                           level='info', request=request)

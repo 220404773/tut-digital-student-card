@@ -18,7 +18,8 @@ from django.utils.crypto import get_random_string
 from datetime import timedelta
 from accounts.models import User, DeletedStudentLog, ReviewRequest
 from accounts.face_checks import compare_faces, describe_similarity
-from accounts.photo_changes import decision_message, email_decision
+from accounts.notices import notify_student, show_new_notices
+from accounts.photo_changes import notify_decision
 from accounts.services import confirmation_cooldown_remaining, send_confirmation_email, split_full_name
 from .models import StudentCard, CardActivity, SignupMetrics, OCRMetrics, PageVisit
 from .utils import (
@@ -44,19 +45,6 @@ def student_required(view_func):
     return wrapper
 
 
-def _tell_student_about_card_decisions(request, user):
-    """Show each decision on the student's photo or name change once, as a
-    pop-up - otherwise a rejected photo just silently never appeared."""
-    decisions = list(ReviewRequest.objects.filter(
-        user=user, reason__in=ReviewRequest.CARD_CHANGE_REASONS, student_notified=False,
-    ).order_by('resolved_at'))
-    for decision in decisions:
-        level, text = decision_message(decision)
-        messages.add_message(request, messages.SUCCESS if level == 'success' else messages.WARNING, text)
-    if decisions:
-        ReviewRequest.objects.filter(pk__in=[d.pk for d in decisions]).update(student_notified=True)
-
-
 @student_required
 def dashboard(request):
     """
@@ -64,7 +52,7 @@ def dashboard(request):
     """
 
     user = request.user
-    _tell_student_about_card_decisions(request, user)
+    show_new_notices(request, user)
     try:
         student_card = StudentCard.objects.get(user=user)
         student_card.refresh_status()
@@ -82,6 +70,8 @@ def dashboard(request):
         'card_data': get_card_display_data(student_card) if student_card else None,
         'confirmation_cooldown_remaining': confirmation_cooldown_remaining(user) if not user.email_confirmed else 0,
         'google_wallet_save_url': google_wallet_save_url,
+        # What the student card office has done on this account, newest first.
+        'notices': user.notices.all()[:5],
         # Most recent human-review request, so an unverified student sees
         # where their registration stands instead of a generic "pending".
         'latest_review': None if user.is_verified else (
@@ -188,6 +178,50 @@ def verify_card_public(request, card_number):
     return render(request, 'cards/verify_public.html', context)
 
 
+def _photo_change_stats():
+    """How photo changes on issued cards were decided, and how the face
+    comparison's similarity scores line up with those decisions - the
+    evidence for choosing FACE_AUTO_APPROVE_MIN_SIMILARITY."""
+    threshold = settings.FACE_AUTO_APPROVE_MIN_SIMILARITY
+    decisions = ReviewRequest.objects.filter(reason='photo_change')
+    undo_records = decisions.filter(message='Automatic approval undone')
+    by_staff = decisions.filter(resolved_by__isnull=False).exclude(pk__in=undo_records)
+    staff_approved = by_staff.filter(status='approved')
+    staff_rejected = by_staff.filter(status='declined')
+    automatic = decisions.filter(resolved_by__isnull=True, status='approved')
+    total = automatic.count() + by_staff.count()
+    compared = decisions.exclude(pk__in=undo_records).filter(similarity__isnull=False)
+
+    def average(queryset):
+        return queryset.filter(similarity__isnull=False).aggregate(avg=Avg('similarity'))['avg']
+
+    return {
+        'total': total,
+        'waiting': students_with_photo_changes().count(),
+        'automatic': automatic.count(),
+        'automatic_rate': automatic.count() * 100 / total if total else 0,
+        'undone': undo_records.count(),
+        'staff_approved': staff_approved.count(),
+        'staff_rejected': staff_rejected.count(),
+        'compared': compared.count(),
+        'compared_rate': compared.count() * 100 / total if total else 0,
+        'avg_similarity_approved': average(decisions.filter(status='approved').exclude(pk__in=undo_records)),
+        'avg_similarity_rejected': average(staff_rejected),
+        # A person approved these, but the score was under the threshold:
+        # matches automatic approval missed. Many of them suggest the
+        # threshold is stricter than it needs to be.
+        'approved_below_threshold': staff_approved.filter(similarity__lt=threshold).count(),
+        # A person rejected these although the score cleared the threshold:
+        # what automatic approval would have let through. Any at all means
+        # the threshold is too low.
+        'rejected_above_threshold': staff_rejected.filter(similarity__gte=threshold).count(),
+        'threshold': threshold,
+        'comparison_on': settings.FACE_COMPARISON_ENABLED,
+        'automatic_on': settings.FACE_COMPARISON_ENABLED and settings.FACE_AUTO_APPROVE_ENABLED,
+        'recent': decisions.select_related('user', 'resolved_by').order_by('-resolved_at')[:10],
+    }
+
+
 @staff_member_required(login_url='login')
 def performance_dashboard(request):
     """
@@ -291,6 +325,8 @@ def performance_dashboard(request):
         + card_stats['pending_name_changes_count']
     )
 
+    photo_stats = _photo_change_stats()
+
     # Site traffic
     total_visits = PageVisit.objects.count()
     distinct_visitors = PageVisit.objects.filter(user__isnull=False).values('user').distinct().count()
@@ -303,6 +339,7 @@ def performance_dashboard(request):
 
     context = {
         'signup_stats': signup_stats,
+        'photo_stats': photo_stats,
         'email_confirmation_stats': email_confirmation_stats,
         'ocr_stats': ocr_stats,
         'card_stats': card_stats,
@@ -484,7 +521,10 @@ def reissue_deleted_student(request, log_id):
             messages.warning(request, 'Account restored, but the card could not be generated. Use Reissue to try again.')
 
         entry.restored_at = timezone.now()
-        entry.save(update_fields=['restored_at'])
+        entry.restored_by = request.user
+        entry.save(update_fields=['restored_at', 'restored_by'])
+        notify_student(student, 'Your account was restored by the student card office, with a new card number.',
+                       level='info', request=request, email=False)
 
     try:
         reset_form = PasswordResetForm(data={'email': student.email})
@@ -619,7 +659,7 @@ def resolve_name_change(request, user_id):
             student, 'name_change', action == 'approve', request.user,
             note=request.POST.get('staff_note', '').strip()[:1000], detail=f'{previous} -> {requested}',
         )
-        transaction.on_commit(lambda: email_decision(decision, request))
+        notify_decision(decision, request)
     if action == 'approve':
         messages.success(request, f'Approved the name change - the card now shows {requested}.')
     else:
@@ -646,6 +686,7 @@ def resolve_photo_change(request, user_id):
             messages.info(request, 'That photo change has already been decided.')
             return redirect('report_review_requests')
         storage = student.pending_profile_picture.storage
+        similarity = student.pending_photo_similarity
         if action == 'approve':
             unused = [student.profile_picture.name, student.previous_profile_picture.name]
             student.profile_picture = student.pending_profile_picture.name
@@ -662,11 +703,11 @@ def resolve_photo_change(request, user_id):
                                     'pending_photo_similarity', 'photo_auto_approved_at', 'previous_profile_picture'])
         decision = ReviewRequest.record_card_change(
             student, 'photo_change', action == 'approve', request.user,
-            note=request.POST.get('staff_note', '').strip()[:1000],
+            note=request.POST.get('staff_note', '').strip()[:1000], similarity=similarity,
         )
         for name in filter(None, unused):
             transaction.on_commit(lambda name=name: storage.delete(name))
-        transaction.on_commit(lambda: email_decision(decision, request))
+        notify_decision(decision, request)
     if action == 'approve':
         messages.success(request, f"Approved {student.get_full_name_display()}'s new photo - it now shows on their card.")
     else:
@@ -696,13 +737,19 @@ def undo_automatic_photo_approval(request, review_id):
         student.save(update_fields=['profile_picture', 'previous_profile_picture'])
         review.message = f'{review.message} - undone by {request.user.email}'
         review.save(update_fields=['message'])
-        decision = ReviewRequest.record_card_change(
+        note = request.POST.get('staff_note', '').strip()[:1000]
+        ReviewRequest.record_card_change(
             student, 'photo_change', False, request.user,
-            note=request.POST.get('staff_note', '').strip()[:1000] or 'The automatic approval was reversed by staff.',
-            detail='Automatic approval undone',
+            note=note or 'The automatic approval was reversed by staff.', detail='Automatic approval undone',
+            similarity=review.similarity,
+        )
+        notify_student(
+            student,
+            "The automatic approval of your new photo was reversed by staff, so your card shows your previous "
+            "photo again." + (f' Reason: {note}' if note else ''),
+            level='warning', request=request,
         )
         transaction.on_commit(lambda: storage.delete(unused))
-        transaction.on_commit(lambda: email_decision(decision, request))
     messages.success(request, f"Undone - {student.get_full_name_display()}'s card shows their previous photo again.")
     return redirect('report_review_requests')
 
@@ -768,6 +815,24 @@ def resolve_review_request(request, review_id):
             review.resolved_at = timezone.now()
             review.resolved_by = request.user
             review.save()
+
+            if action == 'approve':
+                next_step = {
+                    'issued': ' Your digital student card is ready on your dashboard.',
+                    'awaiting_email': ' Confirm your email address to receive your digital student card.',
+                    'awaiting_photo': ' Add a profile photo on your Profile page to receive your digital student card.',
+                    'exists': f' Your card is now valid until {end_date:%d %b %Y}.',
+                }.get(outcome, '')
+                notify_student(student, 'Your registration has been verified by the student card office.' + next_step,
+                               level='success', request=request)
+            else:
+                notify_student(
+                    student,
+                    'The student card office could not verify your registration.'
+                    + (f' Reason: {note}' if note else '')
+                    + ' You can upload your current proof of registration again from your dashboard.',
+                    level='warning', request=request,
+                )
     except Exception:
         logger.exception("Resolving review %s failed", review_id)
         messages.error(request, 'The decision could not be saved, so nothing was changed. Please try again.')

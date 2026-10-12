@@ -46,6 +46,7 @@
                         <td>
                             {% if entry.restored_at %}
                                 <span class="badge bg-secondary">Restored {{ entry.restored_at|date:"Y-m-d" }}</span>
+                                {% if entry.restored_by %}<small class="d-block text-muted">by {{ entry.restored_by.get_full_name_display }}</small>{% endif %}
                             {% else %}
                                 <form method="post" action="{% url 'reissue_deleted_student' entry.pk %}"
                                       data-confirm="Recreate {{ entry.full_name }}'s account with a new card, and email them a link to set a new password?">

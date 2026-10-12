@@ -7,15 +7,14 @@ waits for a staff member, with the comparison shown as advice. Nothing is ever
 rejected automatically (POPIA s71) - only a person turns a change down.
 
 Every decision is recorded (ReviewRequest.record_card_change) and the student
-is told the outcome: on their dashboard, and by email when a person decided.
+is told the outcome (accounts/notices.py).
 """
 import logging
 
 from django.conf import settings
-from django.core.mail import send_mail
-from django.urls import reverse
 
 from .face_checks import compare_faces
+from .notices import notify_student
 
 logger = logging.getLogger(__name__)
 
@@ -65,21 +64,7 @@ def decision_message(review):
     return ('success' if approved else 'warning'), text
 
 
-def email_decision(review, request):
-    """Email the student a decision a staff member made. A failure is logged,
-    not raised: the dashboard tells them anyway."""
-    _, text = decision_message(review)
-    what = 'photo' if review.reason == 'photo_change' else 'name change'
-    try:
-        send_mail(
-            subject=f'Your TUT Digital Student Card {what}',
-            message=(
-                f"Hello {review.user.first_name or 'student'},\n\n{text}\n\n"
-                f"Your card: {request.build_absolute_uri(reverse('dashboard'))}\n\n"
-                "TUT Digital Student Card"
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[review.user.email],
-        )
-    except Exception:
-        logger.exception("Could not email card-change decision %s", review.pk)
+def notify_decision(review, request):
+    """Tell the student how a person decided their photo or name change."""
+    level, text = decision_message(review)
+    notify_student(review.user, text, level=level, request=request)

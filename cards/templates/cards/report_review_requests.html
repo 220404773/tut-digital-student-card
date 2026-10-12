@@ -44,9 +44,9 @@
                                 <label class="visually-hidden" for="end-{{ review.id }}">Confirmed registration end date</label>
                                 <input type="date" id="end-{{ review.id }}" name="registration_end_date" min="{{ today|date:'Y-m-d' }}"
                                        class="form-control form-control-sm" style="width: 150px;" title="Confirmed registration end date">
-                                <label class="visually-hidden" for="note-{{ review.id }}">Note to the student</label>
-                                <input type="text" id="note-{{ review.id }}" name="staff_note" maxlength="1000"
-                                       class="form-control form-control-sm" style="width: 200px;" placeholder="Note to the student (optional)">
+                                <label class="form-label small text-muted mb-0 w-100" for="note-{{ review.id }}">Note to the student (optional)</label>
+                                <textarea id="note-{{ review.id }}" name="staff_note" maxlength="1000" rows="2"
+                                          class="form-control form-control-sm w-100" style="min-width: 260px; field-sizing: content;"></textarea>
                                 {% comment %}
                                     Approve is the form's first button, so pressing Enter in a field submits
                                     through it - it asks for confirmation too, so Enter can't verify a
@@ -128,10 +128,10 @@
                         <td>
                             <form method="post" action="{% url 'resolve_photo_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
-                                <label class="visually-hidden" for="photo-note-{{ student.id }}">Reason for the student</label>
-                                <input type="text" id="photo-note-{{ student.id }}" name="staff_note" maxlength="1000"
-                                       class="form-control form-control-sm" style="max-width: 220px;"
-                                       placeholder="Reason, if rejecting (shown to student)">
+                                {# Full width and growing to fit, so the whole reason can be read before sending. #}
+                                <label class="form-label small text-muted mb-0 w-100" for="photo-note-{{ student.id }}">Reason, if rejecting (shown to the student)</label>
+                                <textarea id="photo-note-{{ student.id }}" name="staff_note" maxlength="1000" rows="2"
+                                          class="form-control form-control-sm w-100" style="min-width: 260px; field-sizing: content;"></textarea>
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
                                         aria-label="Approve the new photo for {{ student.get_full_name_display }}"
                                         data-confirm="Approve the new photo for {{ student.get_full_name_display }}? It will replace the photo on their card.">Approve</button>
@@ -176,10 +176,10 @@
                         <td>
                             <form method="post" action="{% url 'resolve_name_change' student.id %}" class="d-flex flex-wrap gap-2 mb-0">
                                 {% csrf_token %}
-                                <label class="visually-hidden" for="name-note-{{ student.id }}">Reason for the student</label>
-                                <input type="text" id="name-note-{{ student.id }}" name="staff_note" maxlength="1000"
-                                       class="form-control form-control-sm" style="max-width: 220px;"
-                                       placeholder="Reason, if rejecting (shown to student)">
+                                {# Full width and growing to fit, so the whole reason can be read before sending. #}
+                                <label class="form-label small text-muted mb-0 w-100" for="name-note-{{ student.id }}">Reason, if rejecting (shown to the student)</label>
+                                <textarea id="name-note-{{ student.id }}" name="staff_note" maxlength="1000" rows="2"
+                                          class="form-control form-control-sm w-100" style="min-width: 260px; field-sizing: content;"></textarea>
                                 <button type="submit" name="action" value="approve" class="btn btn-sm" style="background:#146c43; color:#fff;"
                                         aria-label="Approve the name change for {{ student.get_full_name_display }}"
                                         data-confirm="Change the name on this card to {{ student.pending_first_name }} {{ student.pending_last_name }}?">Approve</button>
@@ -230,7 +230,7 @@
                         </td>
                         <td>{{ review.staff_note|default:"—" }}</td>
                         <td>
-                            {{ review.resolved_by.email|default:"Automatic" }}
+                            {% if review.resolved_by %}{{ review.resolved_by.get_full_name_display }}{% else %}Automatic{% endif %}
                             {% if review.pk in undoable %}
                                 <form method="post" action="{% url 'undo_automatic_photo_approval' review.pk %}" class="mt-1"
                                       data-confirm="Undo the automatic approval for {{ review.user.get_full_name_display }}? Their card goes back to the previous photo.">

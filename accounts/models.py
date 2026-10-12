@@ -74,7 +74,9 @@ class User(AbstractUser):
         return f"{self.first_name} {self.last_name}"
     
     def get_full_name_display(self):
-        return f"{self.first_name} {self.last_name}"
+        # Staff accounts often have no name: show their email rather than a
+        # blank, so "Deleted by" / "Revoked by" always says who it was.
+        return f"{self.first_name} {self.last_name}".strip() or self.email
 
 
 class DeletedStudentLog(models.Model):
@@ -97,6 +99,9 @@ class DeletedStudentLog(models.Model):
     was_email_confirmed = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(auto_now_add=True)
     deleted_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
+    )
+    restored_by = models.ForeignKey(
         User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
     )
     # Set once staff recreate this student's account from this snapshot
@@ -153,8 +158,10 @@ class ReviewRequest(models.Model):
         User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+'
     )
     staff_note = models.TextField(blank=True, max_length=1000)
-    # Card-change decisions are shown to the student once, on their dashboard.
-    student_notified = models.BooleanField(default=True)
+    # Photo changes: how alike the new and card photo were, when the student
+    # consented to comparison - so the automatic-approval threshold can be
+    # judged against what staff actually decided.
+    similarity = models.FloatField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_at']
@@ -170,14 +177,14 @@ class ReviewRequest(models.Model):
         return f"{self.user.student_number} - {self.get_reason_display()} ({self.status})"
 
     @classmethod
-    def record_card_change(cls, user, reason, approved, staff_member, note='', detail='', notified=False):
+    def record_card_change(cls, user, reason, approved, staff_member, note='', detail='', similarity=None):
         """Record a decision on a photo or name change. staff_member None
         means it was approved automatically; note is the reason given to the
         student; detail is for staff (e.g. the old and new name)."""
         return cls.objects.create(
             user=user, reason=reason, status='approved' if approved else 'declined',
             resolved_at=timezone.now(), resolved_by=staff_member, staff_note=note,
-            message=detail, student_notified=notified,
+            message=detail, similarity=similarity,
         )
 
     @classmethod
@@ -195,3 +202,29 @@ class ReviewRequest(models.Model):
         except IntegrityError:
             # A simultaneous request opened one first.
             return cls.objects.get(user=user, status='pending')
+
+
+class StudentNotice(models.Model):
+    """Something a staff member did that the student should know about -
+    a decision, a revoked or reissued card, a change to their details.
+    Shown once as a pop-up on their dashboard, listed there afterwards, and
+    emailed (accounts/notices.py). Old ones are deleted by purge_old_activity.
+    """
+    LEVEL_CHOICES = [
+        ('success', 'Good news'),
+        ('info', 'Information'),
+        ('warning', 'Needs attention'),
+        ('danger', 'Problem'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notices')
+    level = models.CharField(max_length=10, choices=LEVEL_CHOICES, default='info')
+    text = models.TextField(max_length=1000)
+    created_at = models.DateTimeField(auto_now_add=True)
+    shown_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.student_number} - {self.text[:50]}"
