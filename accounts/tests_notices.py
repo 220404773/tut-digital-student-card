@@ -235,3 +235,32 @@ class MessagesPanelTests(TestCase):
     def test_the_messages_page_is_for_students(self):
         self.client.logout()
         self.assertEqual(self.client.get(reverse('messages')).status_code, 302)
+
+
+class WelcomeMessageTests(TestCase):
+    """The pop-up after signing in: staff usually have no name, so they are
+    welcomed by their email address."""
+
+    def setUp(self):
+        cache.clear()
+
+    def _sign_in(self, email):
+        return self.client.post(reverse('login'), {'email': email, 'password': 'StrongPass123!'}, follow=True)
+
+    def test_staff_are_welcomed_by_email(self):
+        User.objects.create_superuser(username='admin123@tut4life.ac.za', email='admin123@tut4life.ac.za',
+                                      student_number='STAFF-0001', password='StrongPass123!')
+        response = self._sign_in('admin123@tut4life.ac.za')
+        self.assertContains(response, 'Welcome back, admin123@tut4life.ac.za!')
+        self.assertContains(response, 'app-toast-success')
+
+    def test_students_are_still_welcomed_by_first_name(self):
+        User.objects.create_user(username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za',
+                                 student_number='220404773', password='StrongPass123!', first_name='Kekeletso',
+                                 last_name='Khaka', is_verified=True, email_confirmed=True)
+        self.assertContains(self._sign_in('220404773@tut4life.ac.za'), 'Welcome back, Kekeletso!')
+
+    def test_a_student_without_a_first_name_is_welcomed_by_email(self):
+        User.objects.create_user(username='220404999@tut4life.ac.za', email='220404999@tut4life.ac.za',
+                                 student_number='220404999', password='StrongPass123!')
+        self.assertContains(self._sign_in('220404999@tut4life.ac.za'), 'Welcome back, 220404999@tut4life.ac.za!')

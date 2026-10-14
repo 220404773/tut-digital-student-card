@@ -948,7 +948,11 @@ def login_view(request):
             if authenticated_user is not None:
                 clear_failed_logins(posted_email, client_ip)
                 login(request, authenticated_user)
-                messages.success(request, f'Welcome back, {authenticated_user.first_name}!')
+                # Staff accounts usually have no name, so they are welcomed by
+                # their email address; so is anyone else without a first name.
+                who = authenticated_user.email if authenticated_user.is_staff else (
+                    authenticated_user.first_name or authenticated_user.email)
+                messages.success(request, f'Welcome back, {who}!')
                 return post_login_redirect(authenticated_user)
             record_failed_login(posted_email, client_ip)
             form.add_error('password', 'Incorrect password.')
