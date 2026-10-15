@@ -71,10 +71,7 @@ venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env - set the AZURE_OPENAI_* values for AI document classification (NVIDIA_API_KEY
-# optionally, as a fallback). Without them, documents are classified by the rule-based
-# checker instead. Everything else has a working local default (SQLite, local media/
-# folder, console email backend).
+
 
 python manage.py collectstatic --noinput   # tests and DEBUG=False read the static manifest
 

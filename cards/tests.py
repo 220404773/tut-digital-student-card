@@ -1,3 +1,4 @@
+from django.utils import timezone
 from datetime import date, timedelta
 
 from django.test import RequestFactory, TestCase, override_settings
@@ -139,7 +140,8 @@ class CardExpiryTests(TestCase):
     def test_expiry_falls_back_to_one_year_when_unknown(self):
         user = make_user(registration_end_date=None)
         card = generate_student_card(user)
-        expected = date.today() + timedelta(days=365)
+        # The app's clock is UTC; date.today() is local and differs for two hours a night in South Africa.
+        expected = timezone.now().date() + timedelta(days=365)
         self.assertEqual(card.expiry_date, expected)
 
 
