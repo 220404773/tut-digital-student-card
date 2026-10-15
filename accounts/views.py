@@ -454,7 +454,7 @@ def signup(request):
                         else:
                             messages.warning(
                                 request,
-                                'Your document could not be verified automatically. From your dashboard you can '
+                                'Your document could not be verified automatically. From your Home page you can '
                                 'upload a clearer copy, or ask a staff member to review your registration.'
                             )
                 except Exception:
@@ -462,7 +462,7 @@ def signup(request):
                     user.is_verified = False
                     messages.warning(
                         request,
-                        'Your document could not be processed. From your dashboard you can upload it again, '
+                        'Your document could not be processed. From your Home page you can upload it again, '
                         'or ask a staff member to review your registration.'
                     )
             
@@ -554,7 +554,7 @@ def signup(request):
                 messages.warning(
                     request,
                     "Your account was created, but we couldn't send your confirmation email. "
-                    "Use 'Resend' on your dashboard to try again."
+                    "Use 'Resend' on your Home page to try again."
                 )
 
             return redirect('dashboard')
@@ -689,7 +689,7 @@ def confirm_email(request, uidb64, token):
         elif already_confirmed:
             messages.success(request, 'Your email address is already confirmed.')
         else:
-            messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your dashboard.')
+            messages.error(request, 'This confirmation link is invalid or has expired. Request a new one from your Home page.')
 
         if request.user.is_authenticated:
             return post_login_redirect(request.user)

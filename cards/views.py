@@ -825,7 +825,7 @@ def resolve_review_request(request, review_id):
 
             if action == 'approve':
                 next_step = {
-                    'issued': ' Your digital student card is ready on your dashboard.',
+                    'issued': ' Your digital student card is ready on your Home page.',
                     'awaiting_email': ' Confirm your email address to receive your digital student card.',
                     'awaiting_photo': ' Add a profile photo on your Profile page to receive your digital student card.',
                     'exists': f' Your card is now valid until {end_date:%d %b %Y}.',
@@ -837,7 +837,7 @@ def resolve_review_request(request, review_id):
                     student,
                     'The student card office could not verify your registration.'
                     + (f' Reason: {note}' if note else '')
-                    + ' You can upload your current proof of registration again from your dashboard.',
+                    + ' You can upload your current proof of registration again from your Home page.',
                     level='warning', request=request,
                 )
     except Exception:

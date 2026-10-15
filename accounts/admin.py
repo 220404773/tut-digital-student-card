@@ -276,7 +276,7 @@ class StudentUserAdmin(UserAdmin):
                 self.message_user(request, 'Their pending review request was closed.')
             if form is not None and 'is_verified' in form.changed_data:
                 next_step = {
-                    'issued': ' Your digital student card is ready on your dashboard.',
+                    'issued': ' Your digital student card is ready on your Home page.',
                     'awaiting_email': ' Confirm your email address to receive your digital student card.',
                     'awaiting_photo': ' Add a profile photo on your Profile page to receive your digital student card.',
                 }.get(outcome, '')

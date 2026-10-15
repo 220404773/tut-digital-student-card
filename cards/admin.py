@@ -42,7 +42,7 @@ class StudentCardAdmin(admin.ModelAdmin):
                 'revoked': (REVOKED_NOTICE, 'danger'),
                 'active': ('Your digital student card is active again.', 'success'),
                 'expired': ('Your digital student card has been marked as expired. Upload your current proof of '
-                            'registration from your dashboard to reactivate it.', 'warning'),
+                            'registration from your Home page to reactivate it.', 'warning'),
             }.get(obj.status, (f'The status of your digital student card changed to {obj.get_status_display()}.', 'info'))
             notify_student(obj.user, text, level=level, request=request)
         elif 'expiry_date' in form.changed_data and obj.expiry_date:

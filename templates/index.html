@@ -23,9 +23,15 @@
             </a>
             {% else %}
             <h2 class="mb-4">Welcome!</h2>
-            <a href="{% url 'dashboard' %}" class="btn btn-primary btn-lg">
+            {% if user.is_staff %}
+            <a href="{% url 'performance_dashboard' %}" class="btn btn-primary btn-lg">
                 <i class="fas fa-tachometer-alt"></i> Go to Dashboard
             </a>
+            {% else %}
+            <a href="{% url 'dashboard' %}" class="btn btn-primary btn-lg">
+                <i class="fas fa-house"></i> Go to Home
+            </a>
+            {% endif %}
             {% endif %}
         </div>
     </div>
