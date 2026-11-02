@@ -330,3 +330,37 @@ class PublicVerifyTests(TestCase):
         request = factory.get('/', HTTP_X_FORWARDED_PROTO='https', SERVER_NAME='127.0.0.1')
         url = build_card_verification_url(self.card.card_number, request)
         self.assertTrue(url.startswith('https://'))
+
+
+class AccountStatusWatchTests(TestCase):
+    """The home page reloads by itself when what it waits on changes: it
+    polls account_status, and only while something is still pending."""
+
+    def setUp(self):
+        self.student = make_user(is_verified=True)
+        self.client.force_login(self.student)
+
+    def test_status_reports_what_the_page_waits_on(self):
+        data = self.client.get(reverse('account_status')).json()
+        self.assertEqual(data, {'email_confirmed': False, 'is_verified': True, 'has_card': False})
+
+    def test_pending_home_page_watches_and_records_what_it_showed(self):
+        response = self.client.get(reverse('dashboard'))
+        self.assertContains(response, f'data-status-url="{reverse("account_status")}"')
+        self.assertContains(response, 'data-status="010"')
+        self.assertContains(response, 'js/status-watch.')
+
+    def test_issued_card_stops_the_watch(self):
+        self.student.email_confirmed = True
+        self.student.save()
+        generate_student_card(self.student)
+        self.assertNotContains(self.client.get(reverse('dashboard')), 'data-status-url')
+
+    def test_polling_is_not_counted_as_page_visits(self):
+        from .models import PageVisit
+        self.client.get(reverse('account_status'))
+        self.assertFalse(PageVisit.objects.filter(path=reverse('account_status')).exists())
+
+    def test_staff_and_anonymous_get_no_status(self):
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse('account_status')).status_code, 302)

@@ -11,7 +11,7 @@ from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.admin.views.decorators import staff_member_required
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
-from django.http import HttpResponse, HttpResponseNotAllowed
+from django.http import HttpResponse, HttpResponseNotAllowed, JsonResponse
 from django.db.models import Avg, Max, Min, Count, Q, F, ExpressionWrapper, DurationField
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -84,6 +84,19 @@ def dashboard(request):
         'live_qr_refresh_seconds': settings.LIVE_QR_REFRESH_SECONDS,
     }
     return render(request, 'cards/dashboard.html', context)
+
+
+@student_required
+def account_status(request):
+    """What the home page is waiting on, polled by static/js/status-watch.js:
+    when it changes (the email link was clicked in another tab, staff approved
+    the registration, the card was issued) the page reloads by itself."""
+    user = request.user
+    return JsonResponse({
+        'email_confirmed': user.email_confirmed,
+        'is_verified': user.is_verified,
+        'has_card': StudentCard.objects.filter(user=user).exists(),
+    })
 
 
 @student_required

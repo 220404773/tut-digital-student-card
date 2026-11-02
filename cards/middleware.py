@@ -14,9 +14,10 @@ logger = logging.getLogger(__name__)
 EXCLUDED_PREFIXES = ('/static/', '/media/', '/admin/')
 EXCLUDED_PATHS = ('/favicon.ico',)
 # Requests the pages make by themselves, not pages anyone opened: the live
-# card's QR image refreshes every 30 seconds, and the idle-timeout check
-# keeps the session alive. Counting them would swamp the visit figures.
-EXCLUDED_URL_NAMES = ('card_qr_image', 'session_keepalive')
+# card's QR image refreshes every 30 seconds, the idle-timeout check keeps
+# the session alive, and the home page polls for its status to change.
+# Counting them would swamp the visit figures.
+EXCLUDED_URL_NAMES = ('card_qr_image', 'session_keepalive', 'account_status')
 
 
 def purge_old_activity_daily():

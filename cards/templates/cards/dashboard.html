@@ -11,7 +11,11 @@
     </div>
 </div>
 
-<div class="container py-3">
+<div class="container py-3"
+     {% if not student_card or not user.email_confirmed %}
+     data-status-url="{% url 'account_status' %}"
+     data-status="{{ user.email_confirmed|yesno:'1,0' }}{{ user.is_verified|yesno:'1,0' }}{{ student_card|yesno:'1,0' }}"
+     {% endif %}>
     {% if not user.is_verified %}
         {% if latest_review.status == 'pending' %}
             <div class="alert alert-info py-2 mb-2" role="status">
@@ -335,4 +339,5 @@
 </div>
 <script src="{% static 'js/live-card.js' %}" defer></script>
 <script src="{% static 'js/notices.js' %}?v=2" defer></script>
+<script src="{% static 'js/status-watch.js' %}" defer></script>
 {% endblock %}
