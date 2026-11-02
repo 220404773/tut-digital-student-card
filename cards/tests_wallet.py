@@ -125,3 +125,87 @@ class WalletOffTests(TestCase):
             card.status = 'revoked'
             card.save()
         urlopen.assert_not_called()
+
+
+@override_settings(GOOGLE_WALLET_ISSUER_ID='3388000000012345', SITE_URL='https://card.example.test')
+class WalletPassLooksLikeTheCardTests(TestCase):
+    """TUT blue, the app logo, "Student", and the student number and expiry
+    date on the front - for new saves and, via sync_google_wallet, for
+    passes and the pass type that already exist at Google."""
+
+    def setUp(self):
+        cache.clear()
+        student = User.objects.create_user(
+            username='220404773@tut4life.ac.za', email='220404773@tut4life.ac.za', student_number='220404773',
+            password='StrongPass123!', first_name='Kekeletso', last_name='Khaka')
+        self.card = StudentCard.objects.create(user=student, card_number='TUT1WALLET03',
+                                               expiry_date=timezone.now().date() + timedelta(days=90))
+        for target, value in (('cards.google_wallet._load_credentials', FAKE_CREDENTIALS),
+                              ('cards.google_wallet._access_token', 'token')):
+            patcher = patch(target, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_the_pass_is_tut_blue_with_the_logo_and_a_student_subheader(self):
+        from cards.google_wallet import _pass_details
+
+        details = _pass_details(self.card)
+        self.assertEqual(details['hexBackgroundColor'], '#005DAA')
+        self.assertEqual(details['subheader']['defaultValue']['value'], 'Student')
+        logo = details['logo']['sourceUri']['uri']
+        self.assertTrue(logo.startswith('https://card.example.test/static/icons/icon-192'))
+
+    @override_settings(SITE_URL='')
+    def test_no_logo_without_a_public_address(self):
+        from cards.google_wallet import _pass_details
+        self.assertNotIn('logo', _pass_details(self.card))
+
+    def test_the_front_shows_the_student_number_and_expiry(self):
+        from cards.google_wallet import build_google_wallet_save_url
+
+        with patch('cards.google_wallet.jwt.encode', side_effect=lambda payload, key, algorithm: json.dumps(payload)):
+            url = build_google_wallet_save_url(self.card, 'https://card.example.test/verify/TUT1WALLET03/')
+        saved_class = json.loads(url.split('/save/', 1)[1])['payload']['genericClasses'][0]
+        row = saved_class['classTemplateInfo']['cardTemplateOverride']['cardRowTemplateInfos'][0]['twoItems']
+        self.assertEqual(row['startItem']['firstValue']['fields'][0]['fieldPath'],
+                         "object.textModulesData['student_number']")
+        self.assertEqual(row['endItem']['firstValue']['fields'][0]['fieldPath'],
+                         "object.textModulesData['valid_until']")
+
+    def test_the_command_updates_the_pass_type_and_every_saved_pass(self):
+        from django.core.management import call_command
+
+        google = FakeGoogle()
+        out = io.StringIO()
+        with patch('cards.google_wallet.urllib.request.urlopen', google):
+            call_command('sync_google_wallet', stdout=out)
+        self.assertEqual([(target, method) for target, method, _ in google.patches],
+                         [('3388000000012345.tut_digital_student_card', 'PUT'),
+                          ('3388000000012345.TUT1WALLET03', 'PATCH')])
+        self.assertIn('1 saved pass(es) updated', out.getvalue())
+
+    def test_a_pass_type_google_has_never_seen_is_created(self):
+        from cards.google_wallet import update_wallet_class
+
+        sent = []
+
+        def google(request, timeout=None):
+            sent.append(request.get_method())
+            if request.get_method() == 'PUT':
+                raise urllib.error.HTTPError(request.full_url, 404, 'not found', {}, io.BytesIO())
+            return io.BytesIO(b'{}')
+
+        with patch('cards.google_wallet.urllib.request.urlopen', google):
+            self.assertTrue(update_wallet_class())
+        self.assertEqual(sent, ['PUT', 'POST'])
+
+    @override_settings(GOOGLE_WALLET_ISSUER_ID='', GOOGLE_WALLET_CREDENTIALS_JSON='')
+    def test_the_command_does_nothing_without_wallet(self):
+        from django.core.management import call_command
+
+        patch.stopall()
+        out = io.StringIO()
+        with patch('cards.google_wallet.urllib.request.urlopen') as urlopen:
+            call_command('sync_google_wallet', stdout=out)
+        urlopen.assert_not_called()
+        self.assertIn('not configured', out.getvalue())

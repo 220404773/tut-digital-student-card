@@ -18,9 +18,12 @@ All of it is a no-op until GOOGLE_WALLET_ISSUER_ID and
 GOOGLE_WALLET_CREDENTIALS_JSON are set. A failure is logged, never raised:
 the card itself has already changed, and its QR code always shows the truth.
 
-No custom branding (logo/hero image/background color) is set - per Google's
-own schema, only the class `id` is actually required; everything else
-renders with Wallet's default styling if omitted.
+The pass is TUT blue with the app's logo (when SITE_URL gives a public
+address Google can fetch it from), and its front shows the student number
+and expiry date. The front layout belongs to the class, which Google keeps
+as first created: update_wallet_class() (the sync_google_wallet command, run
+after each deploy) brings it, and every saved pass, up to date. No student
+photo is put on the pass.
 """
 import json
 import logging
@@ -32,10 +35,13 @@ import urllib.request
 import jwt
 from django.conf import settings
 from django.core.cache import cache
+from django.templatetags.static import static
 
 logger = logging.getLogger(__name__)
 
 WALLET_API = 'https://walletobjects.googleapis.com/walletobjects/v1/genericObject/'
+WALLET_CLASS_API = 'https://walletobjects.googleapis.com/walletobjects/v1/genericClass/'
+TUT_BLUE = '#005DAA'
 WALLET_SCOPE = 'https://www.googleapis.com/auth/wallet_object.issuer'
 # How each card status shows in Wallet.
 WALLET_STATES = {'active': 'ACTIVE', 'expired': 'EXPIRED', 'revoked': 'INACTIVE'}
@@ -52,17 +58,45 @@ def _object_id(card_number):
     return f"{settings.GOOGLE_WALLET_ISSUER_ID}.{card_number}"
 
 
+def _class_id():
+    return f"{settings.GOOGLE_WALLET_ISSUER_ID}.tut_digital_student_card"
+
+
+def _text(value):
+    return {"defaultValue": {"language": "en-US", "value": value}}
+
+
+def _pass_class():
+    """The pass type: its front shows the student number and the expiry date."""
+    def item(field_id):
+        return {"firstValue": {"fields": [{"fieldPath": f"object.textModulesData['{field_id}']"}]}}
+
+    return {
+        "id": _class_id(),
+        "classTemplateInfo": {"cardTemplateOverride": {"cardRowTemplateInfos": [
+            {"twoItems": {"startItem": item('student_number'), "endItem": item('valid_until')}},
+        ]}},
+    }
+
+
+def _logo():
+    """The app icon, if the site has a public address Google can fetch it from."""
+    if not settings.SITE_URL:
+        return {}
+    uri = settings.SITE_URL.rstrip('/') + static('icons/icon-192.png')
+    return {"logo": {"sourceUri": {"uri": uri}, "contentDescription": _text("TUT Student Card")}}
+
+
 def _pass_details(student_card):
     """What the pass shows - the same for the save link and every update."""
     user = student_card.user
     return {
         "state": WALLET_STATES.get(student_card.status, 'INACTIVE'),
-        "cardTitle": {
-            "defaultValue": {"language": "en-US", "value": "TUT Digital Student Card"}
-        },
-        "header": {
-            "defaultValue": {"language": "en-US", "value": user.get_full_name_display()}
-        },
+        "hexBackgroundColor": TUT_BLUE,
+        **_logo(),
+        "cardTitle": _text("TUT Digital Student Card"),
+        "subheader": _text("Student"),
+        "header": _text(user.get_full_name_display()),
         "textModulesData": [
             {"header": "Student Number", "body": user.student_number, "id": "student_number"},
             {"header": "Card Number", "body": student_card.card_number, "id": "card_number"},
@@ -83,11 +117,10 @@ def build_google_wallet_save_url(student_card, verification_url):
     if not credentials:
         return None
 
-    class_id = f"{settings.GOOGLE_WALLET_ISSUER_ID}.tut_digital_student_card"
-    generic_class = {"id": class_id}
+    generic_class = _pass_class()
     generic_object = {
         "id": _object_id(student_card.card_number),
-        "classId": class_id,
+        "classId": _class_id(),
         **_pass_details(student_card),
         "barcode": {"type": "QR_CODE", "value": verification_url},
     }
@@ -149,6 +182,29 @@ def _patch_pass(card_number, changes):
     except Exception:
         logger.exception("Google Wallet update for card %s failed", card_number)
     return False
+
+
+def update_wallet_class():
+    """Bring the pass type's layout up to date at Google (created if new).
+    Raises on failure: it is run by the sync_google_wallet command, not on
+    a student's request."""
+    credentials = _load_credentials()
+    if not credentials:
+        return False
+    body = json.dumps(_pass_class()).encode()
+    headers = {'Authorization': f'Bearer {_access_token(credentials)}', 'Content-Type': 'application/json'}
+    try:
+        request = urllib.request.Request(WALLET_CLASS_API + urllib.parse.quote(_class_id()),
+                                         data=body, method='PUT', headers=headers)
+        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):
+            return True
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+    # No class yet: nobody has saved a pass. Create it.
+    request = urllib.request.Request(WALLET_CLASS_API.rstrip('/'), data=body, method='POST', headers=headers)
+    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):
+        return True
 
 
 def sync_wallet_pass(student_card):
