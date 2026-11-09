@@ -1,0 +1,81 @@
+@startuml
+!pragma layout smetana
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+skinparam defaultFontSize 10
+
+class User <<entity>> {
+  +student_number : String {unique}
+  +email : String
+  +first_name : String
+  +last_name : String
+  +is_verified : Boolean
+  +email_confirmed : Boolean
+  +profile_picture : Image
+  +registration_end_date : Date
+  +registration_proof_hash : String
+  +consent_given_at : DateTime
+  +is_staff : Boolean
+  --
+  +get_full_name_display() : String
+}
+class StudentCard <<entity>> {
+  +card_number : String {unique}
+  +issue_date : DateTime
+  +expiry_date : Date
+  +status : active | expired | revoked
+  --
+  +is_valid() : Boolean
+  +refresh_status() : String
+}
+class CardActivity <<entity>> {
+  +activity_type : String
+  +timestamp : DateTime
+}
+class ReviewRequest <<entity>> {
+  +reason : String
+  +status : pending | approved | declined
+  +staff_note : String
+  +similarity : Float
+  --
+  {static} +open_for(user, reason)
+}
+class StudentNotice <<entity>> {
+  +level : String
+  +text : String
+  +read_at : DateTime
+}
+class OCRMetrics <<entity>> {
+  +ocr_duration_seconds : Float
+  +ocr_confidence_score : Float
+  +is_accurate : Boolean
+}
+class DocumentVerificationService <<control>> {
+  +process_registration_proof(file) : Result
+  +redact_id_numbers(text) : String
+  +extract_with_llm(text) : Result
+}
+class CardService <<control>> {
+  +issue_card_if_allowed(user) : String
+  +live_code_status(card, code) : String
+}
+class FaceCheckService <<control>> {
+  +photo_problems(file) : List
+  +compare_faces(card_photo, new_photo) : Result
+}
+class NotificationService <<control>> {
+  +notify_student(student, text, level)
+}
+
+User "1" -- "0..1" StudentCard : owns
+StudentCard "1" *-- "0..*" CardActivity : logs
+User "1" -- "0..*" ReviewRequest : subject of
+User "0..1" -- "0..*" ReviewRequest : resolves
+User "1" -- "0..*" StudentNotice : receives
+User "1" -- "0..*" OCRMetrics : measured by
+DocumentVerificationService ..> OCRMetrics : records
+DocumentVerificationService ..> ReviewRequest : opens
+CardService ..> StudentCard : creates / checks
+NotificationService ..> StudentNotice : creates
+FaceCheckService ..> ReviewRequest : advises (score)
+@enduml

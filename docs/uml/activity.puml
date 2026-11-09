@@ -1,0 +1,45 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontSize 10
+|Student|
+start
+:Upload proof of registration;
+|System|
+if (PDF / JPG / PNG, 5 MB or less,\nreal file signature?) then (no)
+  :Error pop-up;
+  stop
+endif
+#FFF2CC:Read text (OCR);
+#FFF2CC:Remove ID numbers;
+#FFF2CC:**AI** classifies and extracts\nfields (20 s budget);
+note right
+  If the AI is down or slow:
+  rule-based reading
+end note
+if (TUT proof of registration\nand still current?) then (no)
+  :Reject at once with the reason;
+  stop
+endif
+:Fill in the form;
+|Student|
+:Check details, set password, tick consent;
+|System|
+if (Typed details match\nthe document?) then (no)
+  if (Third attempt?) then (no)
+    :Ask to correct the fields;
+    stop
+  else (yes)
+    :Unverified account +\nstaff review (POPIA s71);
+    stop
+  endif
+endif
+:Account verified, proof deleted,\nconfirmation email sent;
+|Student|
+:Press Confirm my email;
+:Add a photo (one clear face);
+|System|
+:Issue card (card number,\nlive QR code);
+|Verifier|
+:Scan QR -> LIVE CODE;
+stop
+@enduml

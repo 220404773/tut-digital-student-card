@@ -1,0 +1,60 @@
+@startuml
+!pragma layout smetana
+left to right direction
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam usecase {
+  BackgroundColor<<demo>> #E2F0D9
+  BorderColor<<demo>> #2E7D32
+}
+
+actor "Student" as Student
+actor "Verifier" as Verifier
+actor "Administrator" as Admin
+actor "AI Verification Service\n(Azure OpenAI)" as AI <<system>>
+actor "Email Service" as Mail <<system>>
+actor "Google Wallet API" as GW <<system>>
+
+rectangle "TUT Digital Student Card System - final system" {
+  usecase "UC-01 Register Account" as UC01 <<demo>>
+  usecase "UC-02 Upload Proof\nof Registration" as UC02 <<demo>>
+  usecase "UC-03 Verify Document\n(OCR + AI)" as UC03 <<demo>>
+  usecase "UC-13 Confirm\nEmail Address" as UC13 <<demo>>
+  usecase "UC-04 Issue Digital Card" as UC04 <<demo>>
+  usecase "UC-05 View Live Card" as UC05 <<demo>>
+  usecase "UC-07 Verify Card Publicly" as UC07 <<demo>>
+  usecase "UC-08 Reactivate\nExpired Card" as UC08 <<demo>>
+  usecase "UC-17 Review Registration" as UC17 <<demo>>
+  usecase "UC-20 Read Messages" as UC20 <<demo>>
+  usecase "UC-06 Download QR Code" as UC06
+  usecase "UC-09 Revoke Card" as UC09
+  usecase "UC-11 View Reports" as UC11
+  usecase "UC-18 Change Photo\nor Name" as UC18 <<demo>>
+  usecase "UC-19 Compare Faces\n(with consent)" as UC19 <<demo>>
+  usecase "UC-14 Add Card to\nGoogle Wallet" as UC14 <<demo>>
+}
+
+Student --> UC01
+Student --> UC05
+Student --> UC06
+Student --> UC08
+Student --> UC18
+Student --> UC20
+Student --> UC14
+Verifier --> UC07
+Admin --> UC17
+Admin --> UC09
+Admin --> UC11
+
+UC01 ..> UC02 : <<include>>
+UC02 ..> UC03 : <<include>>
+UC01 ..> UC13 : <<include>>
+UC13 ..> UC04 : <<include>>
+UC08 ..> UC03 : <<include>>
+UC17 ..> UC04 : <<include>>
+UC17 ..> UC20 : <<notifies>>
+UC03 --> AI
+UC13 --> Mail
+UC19 .> UC18 : <<extend>>
+UC14 --> GW
+@enduml

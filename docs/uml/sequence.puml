@@ -1,0 +1,37 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontSize 10
+skinparam sequenceMessageAlign center
+actor Student
+boundary "Signup Page\n(UI)" as UI
+control "Signup View\n(application logic)" as Ctl
+control "DocumentVerificationService" as Reader
+participant "AI Verification Service\n(Azure OpenAI)\n<<emerging technology>>" as AI #FFF2CC
+database "Database\n(data service)" as DB
+
+Student -> UI : choose proof (PDF)
+UI -> Ctl : POST /accounts/signup/preview-proof/
+Ctl -> Ctl : size, type, file signature,\nrate limit
+Ctl -> Reader : process_registration_proof(file)
+Reader -> Reader : read text, remove ID numbers
+Reader -> AI : redacted text (20 s budget)
+alt AI answers
+  AI --> Reader : type, number, name, period, confidence
+else AI down or slow
+  Reader -> Reader : rule-based reading
+end
+Reader --> Ctl : fields + confidence
+alt expired or not a proof
+  Ctl --> UI : 400 + reason
+  UI --> Student : red pop-up
+else accepted
+  Ctl --> UI : fields
+  UI --> Student : form filled in, green pop-up
+  Student -> UI : check details, password, consent
+  UI -> Ctl : POST /accounts/signup/
+  Ctl -> Ctl : typed details = document?
+  Ctl -> DB : save User (verified), metrics
+  Ctl -> Reader : delete the proof
+  Ctl --> UI : home page: "confirm your email"
+end
+@enduml

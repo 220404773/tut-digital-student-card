@@ -1,0 +1,47 @@
+@startuml
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontSize 10
+
+node "Student / verifier device" as Device {
+  artifact "Browser (phone or laptop)\nscans the QR with the camera" as Browser
+}
+
+cloud "DigitalOcean (Amsterdam)" as DO {
+  node "App Platform: Docker container (1 instance)" as App {
+    component "Gunicorn + Django 5.2\n(Python 3.12)" as Server
+    component "accounts\n(signup, profile, reviews, notices)" as Accounts
+    component "cards\n(card, live QR, verify, reports)" as Cards
+    component "DocumentVerificationService\n(PyMuPDF / Tesseract + AI)" as Reader #FFF2CC
+    component "Face check\n(OpenCV YuNet + SFace)" as Face #FFF2CC
+  }
+  database "Managed PostgreSQL\n(daily backups)" as DB
+  folder "Spaces\n(card photos)" as Spaces
+}
+
+cloud "Microsoft Azure (South Africa North)" as Azure {
+  node "Azure OpenAI" as AOAI
+}
+cloud "Google" as Google {
+  node "Google Wallet API\n(student passes)" as GWallet
+}
+cloud "Microsoft Azure" as AzureMail {
+  node "Communication Services\n(email)" as ACS
+}
+
+node "Developer laptop (local copy)" as Laptop {
+  component "Django dev server + SQLite\n(development, tests, demo fallback)" as Local
+}
+
+Browser --> Server : HTTPS
+Server --> Accounts
+Server --> Cards
+Accounts --> Reader
+Accounts --> Face
+Accounts --> DB
+Cards --> DB
+Accounts --> Spaces
+Reader --> AOAI : HTTPS, ID numbers removed
+Accounts --> ACS : confirmation emails
+Cards --> GWallet : HTTPS, pass updates
+@enduml
